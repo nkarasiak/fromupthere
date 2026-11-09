@@ -23,9 +23,12 @@ export class CommandPalette {
   
   // Callbacks
   private onTrackSatellite?: (satelliteId: string) => void;
-  private getSatellites?: () => Map<string, any>;
   private getSearchDatabase?: () => Map<string, any>;
   private loadSearchDatabase?: () => Promise<void>;
+  private getSatelliteConfigs?: () => Array<{ id: string; name?: string; shortname?: string; alternateName?: string }>;
+  private searchRemote?: (query: string) => Promise<Array<{ id: string; name: string }>>;
+  private getConstellations?: () => Array<{ id: string; name: string }>;
+  private remoteTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
     this.palette = document.getElementById('command-palette')!;
@@ -46,11 +49,16 @@ export class CommandPalette {
     getSatellites?: () => Map<string, any>;
     getSearchDatabase?: () => Map<string, any>;
     loadSearchDatabase?: () => Promise<void>;
+    getSatelliteConfigs?: () => Array<{ id: string; name?: string; shortname?: string; alternateName?: string }>;
+    searchRemote?: (query: string) => Promise<Array<{ id: string; name: string }>>;
+    getConstellations?: () => Array<{ id: string; name: string }>;
   }) {
     this.onTrackSatellite = callbacks.onTrackSatellite;
-    this.getSatellites = callbacks.getSatellites;
     this.getSearchDatabase = callbacks.getSearchDatabase;
     this.loadSearchDatabase = callbacks.loadSearchDatabase;
+    this.getSatelliteConfigs = callbacks.getSatelliteConfigs;
+    this.searchRemote = callbacks.searchRemote;
+    this.getConstellations = callbacks.getConstellations;
     
     this.initializeSatellites();
   }
@@ -60,25 +68,26 @@ export class CommandPalette {
   }
 
   public refreshSatelliteList() {
-    // Use search database if available, otherwise fall back to active satellites
-    const satelliteSource = this.getSearchDatabase?.() || this.getSatellites?.();
-    if (!satelliteSource) {
-      return;
-    }
-    
+    // Full catalogue if it loaded; otherwise the known satellites from config (search then goes remote)
+    const db = this.getSearchDatabase?.();
     this.satelliteResults = [];
-    
-    // Convert satellites map to array
-    satelliteSource.forEach((satellite, id) => {
-      this.satelliteResults.push({
-        id,
-        name: satellite.shortname || satellite.alternateName || satellite.name || id,
-        altitude: satellite.altitude
+    if (db && db.size > 0) {
+      db.forEach((satellite, id) => {
+        this.satelliteResults.push({
+          id,
+          name: satellite.shortname || satellite.alternateName || satellite.name || id,
+          altitude: satellite.altitude
+        });
       });
-    });
+    } else {
+      (this.getSatelliteConfigs?.() ?? []).forEach(c => {
+        this.satelliteResults.push({ id: c.id, name: c.shortname || c.alternateName || c.name || c.id });
+      });
+    }
     
     // Sort alphabetically for better UX
     this.satelliteResults.sort((a, b) => a.name.localeCompare(b.name));
+    this.satelliteResults.unshift(...(this.getConstellations?.() ?? [])); // constellations first
     
     // Initially show all satellites
     this.filteredSatellites = [...this.satelliteResults];
@@ -162,6 +171,20 @@ export class CommandPalette {
     this.selectedIndex = 0;
     this.virtualScrollOffset = 0;
     this.renderSatelliteResults();
+
+    // Ask Celestrak by name too (debounced) so any satellite is findable without the full catalogue
+    clearTimeout(this.remoteTimer);
+    if (query.length >= 3 && this.searchRemote) {
+      this.remoteTimer = setTimeout(async () => {
+        const remote = await this.searchRemote!(query);
+        if (this.input.value.trim() !== query) return; // user kept typing
+        const have = new Set(this.filteredSatellites.map(s => s.id));
+        const extra = remote.filter(r => !have.has(r.id));
+        if (extra.length === 0) return;
+        this.filteredSatellites = [...this.filteredSatellites, ...extra];
+        this.renderSatelliteResults();
+      }, 300);
+    }
   }
 
   private renderSatelliteResults() {

@@ -3,6 +3,23 @@
  */
 export class SolarCalculator {
   /**
+   * Sub-solar point (where the sun is at the zenith), accurate to ~0.01 degrees.
+   * Low-precision astronomical almanac formulae; includes the equation of time.
+   */
+  static sunPoint(date: Date = new Date()): { lat: number; lng: number } {
+    const rad = Math.PI / 180;
+    const n = date.getTime() / 86400000 + 2440587.5 - 2451545.0; // days since J2000
+    const L = (280.460 + 0.9856474 * n) % 360;                    // mean longitude
+    const g = ((357.528 + 0.9856003 * n) % 360) * rad;            // mean anomaly
+    const lambda = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * rad; // ecliptic longitude
+    const eps = (23.439 - 0.0000004 * n) * rad;                   // obliquity
+    const ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda)) / rad;
+    const gmst = (280.46061837 + 360.98564736629 * n) % 360;
+    const lng = ((ra - gmst + 540) % 360 + 360) % 360 - 180;
+    return { lat: Math.asin(Math.sin(eps) * Math.sin(lambda)) / rad, lng };
+  }
+
+  /**
    * Calculate if it's nighttime at the given coordinates and time
    * @param latitude Latitude in degrees
    * @param longitude Longitude in degrees  

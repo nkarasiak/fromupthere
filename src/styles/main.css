@@ -13,3 +13,50 @@
 @import './components/search.css';
 @import './components/filters.css';
 @import './components/command-palette.css';
+/* "View constellation" shortcut shown while tracking a member satellite */
+#constellation-link {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 20;
+  padding: 8px 14px;
+  font: 500 13px/1 Inter, sans-serif;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+#constellation-link:hover { background: rgba(0, 255, 170, 0.2); }
+
+/* Constellation time-lapse controls */
+#timelapse {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font: 500 12px/1 Inter, sans-serif;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  backdrop-filter: blur(6px);
+}
+#timelapse button, #timelapse select {
+  font: inherit;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+#timelapse button:hover, #timelapse select:hover { background: rgba(0, 214, 255, 0.25); }
+#timelapse select option { color: #000; }
+#tl-clock { min-width: 150px; opacity: 0.85; font-variant-numeric: tabular-nums; }

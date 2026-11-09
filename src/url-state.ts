@@ -1,3 +1,5 @@
+import { resolveSatelliteId } from './config/satellites';
+
 // '' in dev, '/fromupthere' on GitHub Pages (Vite base without trailing slash)
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 const routePath = () => window.location.pathname.slice(BASE.length) || '/';
@@ -66,11 +68,11 @@ export class URLState {
     }
     
     // Default to ISS tracker if on homepage with no satellite specified and no redirect parameter
-    if (path === '/' && !urlParams.get('satellite') && !urlParams.get('name') && !urlParams.get('redirect')) {
+    if (path === '/' && !urlParams.get('satellite') && !urlParams.get('name') && !urlParams.get('redirect') && !urlParams.get('group')) {
       const url = new URL(window.location.href);
       url.pathname = `${BASE}/iss-zarya`;
-      url.searchParams.set('zoom', '4');
-      url.searchParams.set('pitch', '60');
+      url.searchParams.set('zoom', '4.7');
+      url.searchParams.set('pitch', '62');
       window.history.replaceState({}, '', url.toString());
       return;
     }
@@ -93,7 +95,7 @@ export class URLState {
     const path = routePath();
     const satelliteMatch = path.match(/^\/([^\/]+)$/);
     if (satelliteMatch && path !== '/') {
-      return 4; // Better default zoom for satellite tracking
+      return 4.7; // Default zoom for satellite tracking
     }
     
     return 5; // Default for homepage
@@ -112,10 +114,21 @@ export class URLState {
     const path = routePath();
     const satelliteMatch = path.match(/^\/([^\/]+)$/);
     if (satelliteMatch && path !== '/') {
-      return 60; // Better default pitch for satellite tracking (looking up)
+      return 62; // Default pitch for satellite tracking (looking up)
     }
     
     return 0; // Default for homepage
+  }
+
+  getInitialGroup(): string | null {
+    return new URLSearchParams(window.location.search).get('group');
+  }
+
+  navigateToGroup(groupId: string) {
+    const url = new URL(window.location.href);
+    url.pathname = `${BASE}/`;
+    url.search = `?group=${encodeURIComponent(groupId)}`;
+    window.history.pushState({}, '', url.toString());
   }
 
   getInitialBearing(): number {
@@ -128,7 +141,7 @@ export class URLState {
     const path = routePath();
     const satelliteMatch = path.match(/^\/([^\/]+)$/);
     if (satelliteMatch && path !== '/') {
-      return decodeURIComponent(satelliteMatch[1]);
+      return resolveSatelliteId(decodeURIComponent(satelliteMatch[1]));
     }
     
     // Fall back to query parameters
@@ -174,6 +187,7 @@ export class URLState {
       }
       // Clear satellite query parameter when using path-based routing
       url.searchParams.delete('satellite');
+      if (followingSatellite) url.searchParams.delete('group');
       urlChanged = true;
     }
     

@@ -3,19 +3,20 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { DeckSatelliteTracker } from './deck-satellite-tracker';
 import { URLState } from './url-state';
 import { CommandPalette } from './command-palette';
+import { installNightShading } from './night-layer';
+import { CONSTELLATIONS, Constellation, constellationOf } from './config/satellites';
 import { SearchComponent } from './components/search.component';
 import { CockpitComponent } from './components/cockpit.component';
 import { SEOManager } from './seo-manager';
-import { SolarCalculator } from './utils/solar-calculator';
 
 class SatelliteTracker3D {
   private map!: MapLibreMap;
   private satelliteTracker!: DeckSatelliteTracker;
-  private isDayMode = true;
   private autoNightMode = false; // Auto switch based on satellite position
   private isGlobeMode = true; // Start with globe projection
   private urlState = new URLState();
   private commandPalette!: CommandPalette;
+  private nightShading?: { toggle(): boolean; setTime(ms: number | null): void };
   private searchComponent!: SearchComponent;
   private _cockpitComponent!: CockpitComponent;
   private initialZoom!: number;
@@ -26,7 +27,7 @@ class SatelliteTracker3D {
   constructor() {
     this.initializeMap();
     this.satelliteTracker = new DeckSatelliteTracker(this.map);
-    this.satelliteTracker.setOnTrackingChangeCallback(() => this.updateURL());
+    this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateConstellationLink(); });
     this.satelliteTracker.setOnSatellitesLoadedCallback(() => {
       // Refresh command palette when satellites are loaded
       this.commandPalette?.refreshSatelliteList();
@@ -70,7 +71,8 @@ class SatelliteTracker3D {
       maxPitch: 85, // Allow up to 85 degrees tilt for 3D terrain viewing
       pitchWithRotate: false, // Disable pitch-with-rotate to avoid conflicts
       dragRotate: false, // Disable default drag rotate
-      touchPitch: false // Disable touch pitch
+      touchPitch: false, // Disable touch pitch
+      canvasContextAttributes: { antialias: true } // smooth globe limb and overlay lines (MapLibre defaults to no MSAA)
     });
 
     // Disable MapLibre navigation control to avoid conflicts with Deck.gl
@@ -94,6 +96,8 @@ class SatelliteTracker3D {
     // Initialize with day basemap
     this.map.on('load', () => {
       this.addDayBasemap();
+      this.nightShading = installNightShading(this.map, this.getFirstSatelliteLayerId());
+      this.satelliteTracker.setNightTimeSetter(t => this.nightShading?.setTime(t));
       this.add3DTerrain();
       
       // Apply working pitch override from test page
@@ -131,40 +135,6 @@ class SatelliteTracker3D {
         type: 'raster',
         source: 'esri-world-imagery'
       }, this.getFirstSatelliteLayerId());
-    }
-  }
-
-  private addNightBasemap() {
-    // Remove day basemap if it exists
-    this.removeDayBasemap();
-    
-    // Add night basemap source and layer
-    if (!this.map.getSource('nasa-night')) {
-      this.map.addSource('nasa-night', {
-        type: 'raster',
-        tiles: ['https://map1.vis.earthdata.nasa.gov/wmts-webmerc/VIIRS_CityLights_2012/default/{time}/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg'],
-        tileSize: 256,
-        minzoom: 1,
-        maxzoom: 8,
-        attribution: 'Imagery provided by services from the Global Imagery Browse Services (GIBS), operated by the NASA/GSFC/Earth Science Data and Information System (<a href="https://earthdata.nasa.gov">ESDIS</a>) with funding provided by NASA/HQ.'
-      });
-    }
-    
-    if (!this.map.getLayer('nasa-night')) {
-      this.map.addLayer({
-        id: 'nasa-night',
-        type: 'raster',
-        source: 'nasa-night'
-      }, this.getFirstSatelliteLayerId());
-    }
-  }
-
-  private removeDayBasemap() {
-    if (this.map.getLayer('esri-world-imagery')) {
-      this.map.removeLayer('esri-world-imagery');
-    }
-    if (this.map.getSource('esri-world-imagery')) {
-      this.map.removeSource('esri-world-imagery');
     }
   }
 
@@ -396,15 +366,8 @@ class SatelliteTracker3D {
   }
 
   private toggleBasemap() {
-    // Note: This manual toggle will be overridden by automatic switching
-    this.isDayMode = !this.isDayMode;
-    if (this.isDayMode) {
-      this.addDayBasemap();
-      this.showMessage('☀️ Day basemap enabled (will auto-switch based on satellite)', 'info');
-    } else {
-      this.addNightBasemap();
-      this.showMessage('🌙 Night basemap enabled (will auto-switch based on satellite)', 'info');
-    }
+    const on = this.nightShading?.toggle();
+    this.showMessage(on ? '🌗 Day/night shading on' : '☀️ Day/night shading off', 'info');
   }
 
   private toggleAutoNightMode() {
@@ -418,41 +381,22 @@ class SatelliteTracker3D {
   }
 
   private updateBasemapForSatellite() {
-    // Always update basemap based on satellite's local time (no flag needed)
-
-    const followingSatellite = this.satelliteTracker.getFollowingSatellite();
-    if (!followingSatellite) return;
-
-    const satellites = this.satelliteTracker.getSatellites();
-    const satellite = satellites.get(followingSatellite);
-    
-    if (satellite && satellite.position) {
-      const currentTime = new Date();
-      const localTime = SolarCalculator.getLocalTime(satellite.position.lng, currentTime);
-      const solarElevation = SolarCalculator.calculateSolarElevation(
-        satellite.position.lat,
-        satellite.position.lng,
-        currentTime
-      );
-      const isNight = solarElevation < 0;
-
-      // Only change basemap if the day/night state has changed
-      if (isNight !== !this.isDayMode) {
-        this.isDayMode = !isNight;
-        if (this.isDayMode) {
-          this.addDayBasemap();
-          console.log(`🌍 AUTO-SWITCHED to DAY basemap for ${satellite.name || followingSatellite} (local time: ${localTime}, solar elevation: ${solarElevation.toFixed(1)}°)`);
-        } else {
-          this.addNightBasemap();
-          console.log(`🌙 AUTO-SWITCHED to NIGHT basemap for ${satellite.name || followingSatellite} (local time: ${localTime}, solar elevation: ${solarElevation.toFixed(1)}°)`);
-        }
-      }
-    }
+    // Day/night is one continuous globe: the terminator is drawn by the night-lights layer
+    // (see night-layer.ts), so there is no per-satellite basemap swap any more.
   }
 
 
   private startTracking() {
     this.map.on('load', () => {
+      // ?group=<id> opens a constellation overview instead of tracking one satellite
+      const group = CONSTELLATIONS.find(g => g.id === this.urlState.getInitialGroup());
+      if (group) {
+        this.satelliteTracker.enableExternalSatelliteLoading();
+        this.openConstellation(group);
+        setInterval(() => this.updateUI(), 5000);
+        return;
+      }
+
       // Restore satellite tracking from URL if specified, otherwise default to ISS
       const satelliteToTrack = this.urlState.getInitialSatellite() || 'iss-zarya';
       const isDefaultISS = !this.urlState.getInitialSatellite(); // True if we're defaulting to ISS
@@ -479,8 +423,8 @@ class SatelliteTracker3D {
           
           // Start satellite tracking immediately
           setTimeout(() => {
-            const zoomToUse = isDefaultISS ? 5 : this.initialZoom;
-            const pitchToUse = isDefaultISS ? 60 : this.urlState.getInitialPitch();
+            const zoomToUse = isDefaultISS ? 4.7 : this.initialZoom;
+            const pitchToUse = isDefaultISS ? 62 : this.urlState.getInitialPitch();
             
             
             // Get satellite data to check for default bearing and other properties
@@ -515,7 +459,7 @@ class SatelliteTracker3D {
           setTimeout(() => {
             this.urlState.setInitializing(false);
             this.isInitializing = false;
-          }, 2000); // Shorter timeout for instant tracking
+          }, 3500); // flyTo lasts 3s: stay "initializing" until it ends so the URL never records a mid-flight zoom
         }
       } else {
         // For non-config satellites, load just the specific satellite first
@@ -552,14 +496,14 @@ class SatelliteTracker3D {
             setTimeout(() => {
               this.urlState.setInitializing(false);
               this.isInitializing = false;
-            }, 2000);
+            }, 3500);
           } else {
             // Fallback: if specific satellite not found, load ISS and all satellites
             const issLoaded = this.satelliteTracker.loadConfigSatelliteById('iss-zarya');
             if (issLoaded) {
               this.satelliteTracker.updateLayers();
               this.satelliteTracker.startBackgroundUpdates();
-              this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 5, 60, 0);
+              this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62, 0);
               
               // Satellites will be loaded on-demand when searching
             } else {
@@ -580,6 +524,32 @@ class SatelliteTracker3D {
         this.updateBasemapForSatellite(); // Check for day/night changes
       }, 5000);
     });
+  }
+
+  private async openConstellation(group: Constellation, pushUrl = false) {
+    this.isInitializing = true;
+    this.urlState.setInitializing(true);
+    if (pushUrl) this.urlState.navigateToGroup(group.id);
+    if (!(await this.satelliteTracker.showConstellation(group)) && this.satelliteTracker.loadConfigSatelliteById('iss-zarya')) {
+      this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62, 0); // load failed: fall back to the ISS
+    }
+    setTimeout(() => { this.urlState.setInitializing(false); this.isInitializing = false; }, 3500);
+    this.updateUI();
+    this.updateConstellationLink();
+  }
+
+  // "View <constellation>" button, shown while tracking a satellite that belongs to one
+  private updateConstellationLink() {
+    let btn = document.getElementById('constellation-link') as HTMLButtonElement | null;
+    const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
+    if (!group) { btn?.remove(); return; }
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'constellation-link';
+      document.body.appendChild(btn);
+    }
+    btn.textContent = `🌐 View ${group.name} constellation`;
+    btn.onclick = () => this.openConstellation(group, true);
   }
 
   private updateURL() {
@@ -621,9 +591,17 @@ class SatelliteTracker3D {
     // Set up command palette callbacks
     this.commandPalette.setCallbacks({
       onTrackSatellite: async (satelliteId: string) => {
+        if (satelliteId.startsWith('group:')) {
+          const group = CONSTELLATIONS.find(g => g.id === satelliteId.slice(6));
+          if (group) await this.openConstellation(group, true);
+          return;
+        }
         // Load satellite from search database if not already active
         if (!this.satelliteTracker.getSatellites().has(satelliteId)) {
-          this.satelliteTracker.loadSatelliteFromSearchDatabase(satelliteId);
+          // Not in the (possibly empty) search database -> fetch just this satellite
+          if (!this.satelliteTracker.loadSatelliteFromSearchDatabase(satelliteId)) {
+            await this.satelliteTracker.loadSpecificSatellite(satelliteId);
+          }
         }
         this.satelliteTracker.followSatellite(satelliteId);
         
@@ -638,7 +616,10 @@ class SatelliteTracker3D {
       },
       loadSearchDatabase: async () => {
         await this.satelliteTracker.loadAllSatellitesForSearch();
-      }
+      },
+      getSatelliteConfigs: () => this.satelliteTracker.getSatelliteConfigs(),
+      getConstellations: () => CONSTELLATIONS.map(g => ({ id: `group:${g.id}`, name: `${g.name} constellation` })),
+      searchRemote: (q: string) => this.satelliteTracker.searchRemote(q)
     });
   }
 

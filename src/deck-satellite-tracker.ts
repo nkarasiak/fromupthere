@@ -1,8 +1,10 @@
 import { Deck } from '@deck.gl/core';
-import { ScatterplotLayer, IconLayer, ArcLayer } from '@deck.gl/layers';
+import { MapboxOverlay } from '@deck.gl/mapbox';
+import { ScatterplotLayer, IconLayer, ArcLayer, TextLayer, LineLayer } from '@deck.gl/layers';
 import { Map as MapLibreMap, LngLat } from 'maplibre-gl';
 import * as satellite from 'satellite.js';
-import { SATELLITE_CONFIGS_WITH_STARLINK } from './config/satellites';
+import { SATELLITE_CONFIGS_WITH_STARLINK, Constellation } from './config/satellites';
+import type { SatelliteConfig } from './types/satellite';
 import { SatelliteDataFetcher } from './satellite-data-fetcher';
 import { PerformanceManager } from './performance-manager';
 import { LODManager, ViewportInfo, SatelliteForLOD } from './lod-manager';
@@ -52,7 +54,44 @@ export interface OrbitCircleData {
   satelliteId: string;
 }
 
+const FLY_DURATION_MS = 3000;
+const DEFAULT_ZOOM = 4.7; // default camera when tracking a satellite
+const DEFAULT_PITCH = 62;
+// Samples per orbit ring. Dense on purpose: near the poles longitude changes fast, and a coarse polyline drawn in lng/lat
+// swings out into a visible loop around the pole.
+const RING_N = 480;
+const TRAIL_N = 96; // of which the 20% behind the satellite form its bright trail
+
 export class DeckSatelliteTracker {
+  private constellation: string[] | null = null; // member ids while viewing a constellation overview
+  // The main deck canvas is a flat (Mercator) overlay, which can't sit correctly on the globe at whole-Earth zoom.
+  // The constellation is drawn by a MapboxOverlay instead: it renders inside MapLibre's own globe, in metres, at real altitude.
+  private constellationOverlay?: MapboxOverlay;
+  private constellationColor: [number, number, number] = [0, 214, 255];
+  private constellationSwathKm = 0;
+  // Constellation time-lapse. The camera is fixed in INERTIAL space (looking along the orbit normal), so the Earth visibly
+  // turns under the orbit ring while satellites run round it and paint their ground tracks / swaths onto the surface.
+  private tlRaf = 0;
+  private tlLast = 0;
+  private tlSim = 0;            // simulated time, ms since epoch
+  private tlT0 = 0;             // simulated time the orbit rings/tracks were anchored at
+  private tlGmst = 0;           // Earth rotation angle (rad) at the previous frame
+  private tlGmst0 = 0;          // ... at tlT0
+  private tlPlaying = true;
+  private tlSpeed = 600;
+  private tlRings: Array<{ id: string; pts: number[][]; periodMs: number; segs: Array<{ a: number[]; b: number[]; alpha: number }> }> = [];
+  private tlRingSegs: Array<{ a: number[]; b: number[]; alpha: number }> = [];
+  private tlTracks: Array<{ a: number[]; b: number[] }> = [];     // ground-track segments (Earth-fixed lng/lat)
+  private tlTrackSegs: Array<{ a: number[]; b: number[] }> = [];  // snapshot handed to deck (new reference = re-upload)
+  private tlLastSub = new Map<string, number[]>();
+  private tlLastTrack = 0;
+  private tlHeavyAt = 0;
+  private tlTrackAt = 0;
+  private tlUiAt = 0;
+  private tlVersion = 0;
+  private nightTimeSetter?: (t: number | null) => void;
+  private constellationLayers: any[] = [];
+  private flightUntil = 0; // performance.now() until which deck must not move the map (flyTo in progress)
   private map: MapLibreMap;
   private deck!: Deck;
   private satellites: Map<string, SatelliteData> = new Map(); // Active satellites for display
@@ -168,6 +207,7 @@ export class DeckSatelliteTracker {
     this.deck.setProps({
       onViewStateChange: (params) => {
         const { viewState } = params;
+        if (performance.now() < this.flightUntil) return; // don't cancel a programmatic flyTo with a stale zoom
         
         // Only sync non-pitch properties with MapLibre
         // Let the custom Ctrl+drag handler control pitch directly
@@ -234,6 +274,7 @@ export class DeckSatelliteTracker {
       },
       // Remove parameters that may cause issues with globe projection
       onViewStateChange: ({ viewState }) => {
+        if (performance.now() < this.flightUntil) return; // don't cancel a programmatic flyTo with a stale zoom
         // Sync with MapLibre view but don't set pitch
         // Let MapLibre handle pitch control entirely
         this.map.jumpTo({
@@ -366,21 +407,311 @@ export class DeckSatelliteTracker {
     return false;
   }
 
+  // Add a satellite built from a (TLE-bearing) config to the active set
+  private addSatelliteFromConfig(c: SatelliteConfig): boolean {
+    if (!c.tle1 || !c.tle2) return false;
+    try {
+      const p = this.calculateSatellitePosition(c.tle1, c.tle2, c.id);
+      if (isNaN(p.longitude) || isNaN(p.latitude) || isNaN(p.altitude)) return false;
+      this.satellites.set(c.id, {
+        id: c.id, name: c.name || c.id, shortname: c.shortname, alternateName: c.alternateName,
+        type: c.type || 'earth-observation', tle1: c.tle1, tle2: c.tle2,
+        dimensions: c.dimensions || { length: 2.0, width: 1.0, height: 1.0 }, image: c.image,
+        defaultBearing: c.defaultBearing, defaultZoom: c.defaultZoom, defaultPitch: c.defaultPitch,
+        scaleFactor: c.scaleFactor || 2.0,
+        position: new LngLat(p.longitude, p.latitude), altitude: p.altitude, velocity: p.velocity
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private ensureGlobeOverlay(): MapboxOverlay {
+    if (!this.constellationOverlay) {
+      this.constellationOverlay = new MapboxOverlay({ interleaved: true, layers: [] });
+      this.map.addControl(this.constellationOverlay as any);
+    }
+    return this.constellationOverlay;
+  }
+
+  // Everything the constellation view draws inside MapLibre's own globe
+  private applyGlobeLayers() {
+    this.ensureGlobeOverlay().setProps({ layers: this.constellationLayers });
+  }
+
+  setNightTimeSetter(fn: (t: number | null) => void) {
+    this.nightTimeSetter = fn;
+  }
+
+  private clearConstellation() {
+    this.constellation = null;
+    this.constellationLayers = [];
+    cancelAnimationFrame(this.tlRaf);
+    document.getElementById('timelapse')?.remove();
+    this.nightTimeSetter?.(null); // day/night back to real time
+    if (this.constellationOverlay) this.applyGlobeLayers();
+  }
+
+  // Show every satellite of a constellation at once: real altitude, real orbit rings, whole orbit in view, and a
+  // time-lapse (Earth turning, ground tracks and swaths painted) that shows how the constellation covers the planet.
+  async showConstellation(group: Constellation): Promise<boolean> {
+    const configs = await this.satelliteDataFetcher.fetchGroup(group.query, group.members);
+    const ids = configs.filter(c => this.addSatelliteFromConfig(c)).map(c => c.id);
+    console.log(`🌐 Constellation "${group.id}": ${ids.length}/${group.members.length} satellites`);
+    if (ids.length === 0) {
+      this.showMessage(`Could not load the ${group.name} constellation`, 'error');
+      return false;
+    }
+
+    this.stopSimpleTracking();
+    this.smoothTracker.stopTracking();
+    this.smoothCamera.stopSmoothTracking();
+    this.followingSatellite = null;
+    this.constellation = ids;
+    this.constellationColor = group.color;
+    this.constellationSwathKm = group.swathKm;
+    this.deck.setProps({ layers: [] }); // the flat overlay stays empty; the globe overlay draws everything
+    this.ensureGlobeOverlay();
+
+    // Frame the whole orbit FACE-ON: look along the orbit plane's normal, so the ring is a full circle around the Earth,
+    // every satellite is spaced around it and none hides behind the planet. The plane is the one most members share;
+    // others (e.g. EDC-01) cross it.
+    const sats = ids.map(id => this.satellites.get(id)!);
+    const rad = Math.PI / 180;
+    const nowDate = new Date();
+    const gmst = satellite.gstime(nowDate);
+    const normals: number[][] = [];
+    for (const s of sats) {
+      const pv = satellite.propagate(satellite.twoline2satrec(s.tle1, s.tle2), nowDate);
+      if (!pv || typeof pv.position === 'boolean' || typeof pv.velocity === 'boolean') continue;
+      const { position: r, velocity: v } = pv;
+      const hx = r.y * v.z - r.z * v.y, hy = r.z * v.x - r.x * v.z, hz = r.x * v.y - r.y * v.x; // orbit normal (ECI)
+      const m = Math.hypot(hx, hy, hz);
+      const e = satellite.eciToEcf({ x: hx / m, y: hy / m, z: hz / m }, gmst); // -> Earth-fixed, the map's frame
+      normals.push([e.x, e.y, e.z]);
+    }
+    const dot = (p: number[], q: number[]) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+    const sharing = (p: number[]) => normals.filter(q => dot(p, q) > Math.cos(15 * rad));
+    let lng0: number, lat0: number;
+    if (normals.length) {
+      const ref = normals.reduce((p, q) => (sharing(q).length > sharing(p).length ? q : p));
+      const n = sharing(ref).reduce((acc, q) => [acc[0] + q[0], acc[1] + q[1], acc[2] + q[2]], [0, 0, 0]);
+      lat0 = Math.asin(n[2] / Math.hypot(n[0], n[1], n[2])) / rad;
+      lng0 = Math.atan2(n[1], n[0]) / rad;
+    } else { // no usable orbit: fall back to the mean position
+      lat0 = sats.reduce((a, s) => a + s.position.lat, 0) / sats.length;
+      lng0 = sats[0].position.lng;
+    }
+    const { clientWidth: w, clientHeight: h } = this.map.getContainer();
+    const maxAlt = Math.max(...sats.map(s => s.altitude));
+    const ringRadius = 1 + maxAlt / 6371; // in Earth radii
+    // MapLibre's globe is drawn larger the further the view centre is from the equator (zoom is Mercator-scaled),
+    // so compensate with cos(latitude) to keep the orbit the same size on screen wherever the satellites are.
+    const zoom = Math.max(0.8, Math.min(3, Math.log2(0.8 * Math.min(w, h) / (151 * ringRadius)) + Math.log2(Math.cos(lat0 * rad))));
+    this.flightUntil = performance.now() + FLY_DURATION_MS + 200;
+    this.map.flyTo({ center: [lng0, lat0], zoom, pitch: 0, bearing: 0, duration: FLY_DURATION_MS, essential: true });
+
+    // Time-lapse: starts playing right after the fly-in
+    this.tlGmst = gmst;
+    this.tlPlaying = true;
+    this.tlSpeed = 600;
+    this.anchorTimelapse(nowDate.getTime());
+    this.buildTimelapseControls();
+    cancelAnimationFrame(this.tlRaf);
+    this.tlLast = 0;
+    this.tlRaf = requestAnimationFrame(this.constellationFrame);
+    this.onTrackingChangeCallback?.();
+    return true;
+  }
+
+  // (Re)start rings and ground tracks from simulated time t
+  private anchorTimelapse(t: number) {
+    this.tlT0 = this.tlSim = this.tlLastTrack = t;
+    this.tlGmst0 = satellite.gstime(new Date(t));
+    this.tlTracks = [];
+    this.tlTrackSegs = [];
+    this.tlLastSub.clear();
+    this.tlVersion++;
+    this.tlRings = (this.constellation || []).map(id => {
+      const s = this.satellites.get(id)!;
+      const { pts, periodMs } = this.computeOrbitRing(s.tle1, s.tle2, t);
+      const segs = pts.slice(1).map(() => ({ a: [0, 0, 0], b: [0, 0, 0], alpha: 0 }));
+      return { id, pts, periodMs, segs };
+    });
+    this.tlRingSegs = this.tlRings.flatMap(r => r.segs);
+  }
+
+  // One full orbit as an inertial ring around the Earth, in the (rotating) Earth-fixed frame at time t.
+  // Starts TRAIL_N samples behind the satellite, so pts[TRAIL_N] is the satellite at time t.
+  private computeOrbitRing(tle1: string, tle2: string, t: number): { pts: number[][]; periodMs: number } {
+    const satrec = satellite.twoline2satrec(tle1, tle2);
+    const periodMs = (2 * Math.PI / satrec.no) * 60000; // satrec.no = rad/min
+    const gmst = satellite.gstime(new Date(t));
+    const pts: number[][] = [];
+    for (let k = 0; k <= RING_N; k++) {
+      const pv = satellite.propagate(satrec, new Date(t + ((k - TRAIL_N) / RING_N) * periodMs));
+      if (!pv || !pv.position || typeof pv.position === 'boolean') continue;
+      const g = satellite.eciToGeodetic(pv.position, gmst); // same gmst for every sample -> inertial ring
+      pts.push([satellite.degreesLong(g.longitude), satellite.degreesLat(g.latitude), g.height * 1000]);
+    }
+    return { pts, periodMs };
+  }
+
+  private buildTimelapseControls() {
+    document.getElementById('timelapse')?.remove();
+    const box = document.createElement('div');
+    box.id = 'timelapse';
+    box.innerHTML = `<button id="tl-play" title="Pause / play">⏸</button>
+      <select id="tl-speed" title="Time-lapse speed">${[1, 60, 300, 600, 1800].map(v => `<option value="${v}"${v === this.tlSpeed ? ' selected' : ''}>×${v}</option>`).join('')}</select>
+      <button id="tl-reset" title="Restart from now">⟲</button><span id="tl-clock"></span>`;
+    document.body.appendChild(box);
+    box.querySelector('#tl-play')!.addEventListener('click', e => {
+      this.tlPlaying = !this.tlPlaying;
+      (e.currentTarget as HTMLElement).textContent = this.tlPlaying ? '⏸' : '▶';
+    });
+    box.querySelector('#tl-speed')!.addEventListener('change', e => { this.tlSpeed = Number((e.target as HTMLSelectElement).value); });
+    box.querySelector('#tl-reset')!.addEventListener('click', () => this.anchorTimelapse(Date.now()));
+  }
+
+  private constellationFrame = (ts: number) => {
+    if (!this.constellation) return;
+    this.tlRaf = requestAnimationFrame(this.constellationFrame);
+    const dt = this.tlLast ? Math.min(ts - this.tlLast, 100) : 0;
+    this.tlLast = ts;
+    const flying = performance.now() < this.flightUntil; // hold the clock still during the fly-in
+
+    if (!flying && this.tlPlaying) {
+      this.tlSim += dt * this.tlSpeed;
+      if (this.tlSim - this.tlT0 > 24 * 3600e3) this.anchorTimelapse(this.tlSim); // loop day by day: rings/tracks restart
+    }
+    const date = new Date(this.tlSim);
+    const gmst = satellite.gstime(date);
+
+    // Earth turns under a fixed (inertial) view: move the map centre west by the rotation since the last frame
+    let d = (gmst - this.tlGmst) * 180 / Math.PI;
+    d = ((d + 540) % 360) - 180;
+    this.tlGmst = gmst;
+    if (!flying && d) {
+      const c = this.map.getCenter();
+      this.map.jumpTo({ center: [c.lng - d, c.lat] });
+    }
+    if (!flying) this.nightTimeSetter?.(this.tlSim); // the terminator follows the simulated sun
+
+    // Satellites at the simulated time; ground tracks sampled every 30 simulated seconds
+    const paint = !flying && this.tlPlaying && this.tlSim - this.tlLastTrack >= 30000;
+    for (const id of this.constellation) {
+      const s = this.satellites.get(id)!;
+      const p = this.calculateSatellitePosition(s.tle1, s.tle2, id, date);
+      s.position = new LngLat(p.longitude, p.latitude);
+      s.altitude = p.altitude;
+      s.velocity = p.velocity;
+      if (paint) {
+        const sub = [p.longitude, p.latitude, 0];
+        const prev = this.tlLastSub.get(id);
+        if (prev && Math.abs(prev[0] - sub[0]) < 180) this.tlTracks.push({ a: prev, b: sub });
+        this.tlLastSub.set(id, sub);
+      }
+    }
+    if (paint) this.tlLastTrack = this.tlSim;
+
+    const now = performance.now();
+    if (now - this.tlHeavyAt > 50) { // orbit rings at 20 Hz
+      this.tlHeavyAt = now;
+      this.updateRingSegments(gmst);
+      this.tlVersion++;
+    }
+    if (this.tlTracks.length !== this.tlTrackSegs.length && now - this.tlTrackAt > 500) { // tracks at 2 Hz
+      this.tlTrackAt = now;
+      this.tlTrackSegs = this.tlTracks.slice();
+    }
+    if (now - this.tlUiAt > 250) { // clock label
+      this.tlUiAt = now;
+      const iso = date.toISOString();
+      const el = document.getElementById('tl-clock');
+      if (el) el.textContent = `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC${this.tlSpeed === 1 ? ' · real time' : ''}`;
+    }
+    this.renderConstellation();
+  };
+
+  // Orbit rings in the current Earth-fixed frame: a faint ring plus a bright trail fading in toward each satellite
+  private updateRingSegments(gmst: number) {
+    const shift = (this.tlGmst0 - gmst) * 180 / Math.PI; // an inertial ring turns west as the Earth turns east
+    for (const r of this.tlRings) {
+      const phase = ((((this.tlSim - this.tlT0) / r.periodMs) % 1) + 1) % 1;
+      for (let i = 0; i < r.segs.length; i++) {
+        const p0 = r.pts[i], p1 = r.pts[i + 1], seg = r.segs[i];
+        seg.a[0] = p0[0] + shift; seg.a[1] = p0[1]; seg.a[2] = p0[2];
+        seg.b[0] = p1[0] + shift; seg.b[1] = p1[1]; seg.b[2] = p1[2];
+        const behind = ((((phase - (i + 0.5 - TRAIL_N) / RING_N) % 1) + 1) % 1); // orbit fraction behind the satellite
+        const trail = behind < TRAIL_N / RING_N ? 1 - behind / (TRAIL_N / RING_N) : 0;
+        seg.alpha = trail > 0 ? 40 + 215 * trail * trail : 38;
+      }
+    }
+  }
+
+  private renderConstellation() {
+    if (!this.constellation) return;
+    const [r, g, b] = this.constellationColor;
+    const dots = this.constellation.map(id => {
+      const s = this.satellites.get(id)!;
+      return { id, name: s.shortname || s.name, position: [s.position.lng, s.position.lat, s.altitude * 1000] };
+    });
+    const v = this.tlVersion;
+    // Everything is drawn at full strength, including what is behind the Earth (no depth test, no fading)
+    const flat = { depthCompare: 'always' as const, cullMode: 'none' as const };
+    this.constellationLayers = [
+      new LineLayer({ // swath ribbon painted on the ground
+        id: 'constellation-swath', data: this.tlTrackSegs, parameters: flat,
+        getSourcePosition: (d: any) => d.a, getTargetPosition: (d: any) => d.b,
+        getColor: [r, g, b, 45], getWidth: this.constellationSwathKm * 1000, widthUnits: 'meters'
+      }),
+      new LineLayer({ // ground track
+        id: 'constellation-tracks', data: this.tlTrackSegs, parameters: flat,
+        getSourcePosition: (d: any) => d.a, getTargetPosition: (d: any) => d.b,
+        getColor: [r, g, b, 190], getWidth: 1.5, widthUnits: 'pixels'
+      }),
+      new LineLayer({ // orbit rings + trails
+        id: 'constellation-orbits', data: this.tlRingSegs, parameters: flat,
+        getSourcePosition: (d: any) => d.a, getTargetPosition: (d: any) => d.b,
+        getColor: (d: any) => [r, g, b, d.alpha] as any, getWidth: 2, widthUnits: 'pixels',
+        updateTriggers: { getSourcePosition: v, getTargetPosition: v, getColor: v }
+      }),
+      new ScatterplotLayer({ // soft glow
+        id: 'constellation-glow', data: dots, parameters: flat,
+        getPosition: (d: any) => d.position, getRadius: 20, radiusUnits: 'pixels', billboard: true,
+        getFillColor: [r, g, b, 55]
+      }),
+      new ScatterplotLayer({ // bright core
+        id: 'constellation-dots', data: dots, parameters: flat, pickable: true,
+        getPosition: (d: any) => d.position, getRadius: 5.5, radiusUnits: 'pixels', billboard: true,
+        getFillColor: [255, 255, 255, 255], getLineColor: [r, g, b, 255], getLineWidth: 2.5, stroked: true
+      }),
+      new TextLayer({
+        id: 'constellation-labels', data: dots, parameters: flat,
+        getPosition: (d: any) => d.position, getText: (d: any) => d.name,
+        getSize: 12, getColor: [255, 255, 255, 255], getPixelOffset: [0, -24],
+        background: true, getBackgroundColor: [8, 14, 24, 190], backgroundPadding: [7, 3],
+        fontFamily: 'Inter, sans-serif', fontWeight: 600
+      })
+    ];
+    this.applyGlobeLayers();
+  }
+
   // Load a specific satellite from external data without loading all satellites
   async loadSpecificSatellite(satelliteId: string): Promise<boolean> {
     console.log(`🔍 Loading satellite "${satelliteId}" from Celestrak data...`);
     
     try {
-      // Download all TLE data from Celestrak
-      const allSatellites = await this.satelliteDataFetcher.fetchSatellites(['all']);
-      console.log(`🔍 Downloaded ${allSatellites.length} satellites from Celestrak`);
+      // Cheap targeted lookup first; only download the full catalogue if that fails
+      const direct = await this.satelliteDataFetcher.fetchSatelliteBySlug(satelliteId);
+      const allSatellites = direct ? [direct] : await this.satelliteDataFetcher.fetchSatellites(['all']);
+      console.log(`🔍 Downloaded ${allSatellites.length} satellites from Celestrak${direct ? ' (targeted)' : ''}`);
       
-      // IMPORTANT: Populate the search database with all satellites while we have them
-      if (!this.searchSatellitesLoaded) {
-        console.log(`🔍 Populating search database with ${allSatellites.length} satellites...`);
+      // Populate the search database while we have the full catalogue (otherwise it loads on first search)
+      if (!direct && !this.searchSatellitesLoaded) {
         await this.populateSearchDatabaseFromSatelliteList(allSatellites);
         this.searchSatellitesLoaded = true;
-        console.log(`🔍 Search database now contains ${this.searchSatelliteDatabase.size} satellites`);
       }
       
       // Find the specific satellite by ID or name
@@ -531,7 +862,12 @@ export class DeckSatelliteTracker {
     }
     
     await this.loadAllSatellitesFromCelestrak();
-    this.searchSatellitesLoaded = true;
+    // Stay "not loaded" if the download failed, so a later open can retry
+    this.searchSatellitesLoaded = this.searchSatelliteDatabase.size > 0;
+  }
+
+  async searchRemote(query: string): Promise<Array<{ id: string; name: string }>> {
+    return (await this.satelliteDataFetcher.searchByName(query)).map(t => ({ id: t.id, name: t.name }));
   }
 
   // Load a specific satellite from search database into active satellites for tracking
@@ -751,8 +1087,8 @@ export class DeckSatelliteTracker {
     
     this.loadingIcons.add(satelliteId);
     
-    // Ensure proper path resolution - add leading slash if missing
-    const resolvedUrl = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`;
+    // Resolve against the Vite base (e.g. /fromupthere/ on GitHub Pages)
+    const resolvedUrl = `${import.meta.env.BASE_URL}${imageUrl.replace(/^\//, '')}`;
     
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -881,11 +1217,11 @@ export class DeckSatelliteTracker {
     }
   }
 
-  private calculateSatellitePosition(tle1: string, tle2: string, satelliteId?: string) {
+  private calculateSatellitePosition(tle1: string, tle2: string, satelliteId?: string, at?: Date) {
     const now = Date.now();
     
     // Check cache first if satellite ID is provided, but SKIP cache for followed satellite
-    if (satelliteId && this.followingSatellite !== satelliteId) {
+    if (satelliteId && !at && this.followingSatellite !== satelliteId) {
       const cached = this.positionCache.get(satelliteId);
       if (cached && now - cached.timestamp < this.POSITION_CACHE_TTL) {
         return cached.position;
@@ -900,7 +1236,7 @@ export class DeckSatelliteTracker {
       this.satelliteRecords.set(cacheKey, satrec);
     }
     
-    const currentTime = new Date();
+    const currentTime = at ?? new Date(); // `at`: simulated time (constellation time-lapse); bypasses the cache
     const positionAndVelocity = satellite.propagate(satrec, currentTime);
     
     if (positionAndVelocity.position && typeof positionAndVelocity.position !== 'boolean') {
@@ -956,7 +1292,7 @@ export class DeckSatelliteTracker {
       };
       
       // Cache the result if satellite ID is provided
-      if (satelliteId) {
+      if (satelliteId && !at) {
         this.positionCache.set(satelliteId, { position: result, timestamp: now });
         
         // Add to interpolator for smooth movement
@@ -1466,6 +1802,7 @@ export class DeckSatelliteTracker {
 
 
   updateLayers(forceUpdate: boolean = false) {
+    if (this.constellation) return; // drawn by the time-lapse frame loop
     const now = Date.now();
     const zoom = this.map.getZoom();
     const bounds = this.map.getBounds();
@@ -1592,14 +1929,18 @@ export class DeckSatelliteTracker {
     this.deck.setProps({ layers });
   }
 
-  private handleClick(_info: any) {
-    // DISABLED: Do not stop following or show all satellites when clicking empty areas
-    // This prevents the CPU/memory nightmare of loading all satellites at once
-    // Only individual satellite clicks should change tracking
+  private handleClick(info: any) {
+    // Clicking empty areas does nothing (avoids loading all satellites at once).
+    // In constellation view, a click on a satellite starts tracking it.
+    if (this.constellation && this.constellationOverlay) {
+      const hit: any = this.constellationOverlay.pickObject({ x: info.x, y: info.y, radius: 14 });
+      if (hit?.object?.id) this.followSatellite(hit.object.id);
+    }
   }
 
 
   followSatellite(satelliteId: string, preserveZoom: boolean = false, explicitZoom?: number) {
+    this.clearConstellation();
     this.followingSatellite = satelliteId;
     // Reset tracked satellite size when following a new satellite
     this.trackedSatelliteSizeMultiplier = 1.0;
@@ -1626,7 +1967,8 @@ export class DeckSatelliteTracker {
       
       // Calculate offset to position camera so satellite appears centered
       // This simulates looking "at" the satellite rather than "up at" it
-      const pitchRadians = 60 * Math.PI / 180; // 60 degrees in radians
+      const pitch = satellite.defaultPitch ?? DEFAULT_PITCH;
+      const pitchRadians = pitch * Math.PI / 180;
       
       // Calculate how far back the camera needs to be to center the satellite
       // Using trigonometry: distance = altitude / tan(pitch)
@@ -1646,22 +1988,13 @@ export class DeckSatelliteTracker {
       } else if (preserveZoom) {
         adjustedZoom = this.map.getZoom();
       } else {
-        if (satelliteAltitudeKm > 700) {
-          adjustedZoom = 3.5; // Fixed zoom for ultra-high satellites
-        } else if (satelliteAltitudeKm > 600) {
-          adjustedZoom = 3.0; // Fixed zoom for very high satellites like YAM-10
-        } else if (satelliteAltitudeKm > 500) {
-          adjustedZoom = 3.5; // Fixed zoom for high satellites
-        } else if (satelliteAltitudeKm > 400) {
-          adjustedZoom = 4.0; // Fixed zoom for medium satellites
-        } else {
-          adjustedZoom = 5.5; // Fixed zoom for lower satellites
-        }
+        adjustedZoom = satellite.defaultZoom ?? DEFAULT_ZOOM;
       }
+      this.flightUntil = performance.now() + 2200; // keep deck from cancelling the flyTo with a stale zoom
       this.map.flyTo({
         center: [cameraLng, cameraLat],
         zoom: adjustedZoom,
-        pitch: 60, // Look up at satellite
+        pitch, // Look up at satellite
         bearing: satellite.defaultBearing ?? 0, // Use satellite's default bearing or 0
         duration: 2000,
         essential: true
@@ -1671,10 +2004,10 @@ export class DeckSatelliteTracker {
       setTimeout(() => {
       }, 100);
       
-      // Start smooth tracking after a delay to let flyTo complete
+      // Start smooth tracking once the 2s flyTo has finished (earlier, its jumpTo cancels the flight mid-way)
       setTimeout(() => {
-        this.startUltraSmoothTracking(satellite);
-      }, 1000);
+        if (this.followingSatellite === satelliteId) this.startUltraSmoothTracking(satellite);
+      }, 2100);
       
       this.showMessage(`🎯 Following ${satellite.name}`, 'success');
       this.updateLayers(true); // Update layers to show orbit path if enabled
@@ -1687,6 +2020,7 @@ export class DeckSatelliteTracker {
   }
 
   followSatelliteWithAnimation(satelliteId: string, targetZoom: number, targetPitch: number, targetBearing: number) {
+    this.clearConstellation();
     this.followingSatellite = satelliteId;
     // Reset tracked satellite size when following a new satellite
     this.trackedSatelliteSizeMultiplier = 1.0;
@@ -1725,13 +2059,19 @@ export class DeckSatelliteTracker {
         zoom: validZoom,
         pitch: targetPitch,
         bearing: targetBearing,
-        duration: 3000,
+        duration: FLY_DURATION_MS,
         essential: true
       });
       
-      // Listen for flyTo completion
-      const onFlyToComplete = () => {
-        this.map.off('moveend', onFlyToComplete);
+      // Start tracking when the flyTo ends. Ignore a 'moveend' from some earlier camera move that ends
+      // mid-flight (it would start tracking and cancel the flyTo); a timer guarantees tracking starts anyway.
+      const flyStart = performance.now();
+      this.flightUntil = flyStart + FLY_DURATION_MS + 200;
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        this.map.off('moveend', onFlyMoveEnd);
         this.startUltraSmoothTracking(satellite);
         
         // Notify about tracking change AFTER animation completes
@@ -1739,8 +2079,12 @@ export class DeckSatelliteTracker {
           this.onTrackingChangeCallback();
         }
       };
+      const onFlyMoveEnd = () => {
+        if (performance.now() - flyStart >= FLY_DURATION_MS - 100) finish();
+      };
       
-      this.map.on('moveend', onFlyToComplete);
+      this.map.on('moveend', onFlyMoveEnd);
+      setTimeout(finish, FLY_DURATION_MS + 300);
       
       this.showMessage(`🎯 Following ${satellite.name}`, 'success');
       this.updateLayers(true); // Update layers to show orbit path if enabled

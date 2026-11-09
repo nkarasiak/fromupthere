@@ -161,6 +161,67 @@ export class SatelliteDataFetcher {
   }
   
   /**
+   * Server-side name search (case-insensitive substring), for the search palette when the full
+   * catalogue is unavailable (e.g. Celestrak 403 for re-downloading within 2h). Results are cached.
+   */
+  async searchByName(query: string): Promise<TLEData[]> {
+    const key = `q:${query.toLowerCase()}`;
+    const now = Date.now();
+    if (this.cacheExpiry.get(key)! > now) return this.cache.get(key)!;
+    try {
+      const res = await fetch(`https://celestrak.org/NORAD/elements/gp.php?NAME=${encodeURIComponent(query)}&FORMAT=tle`);
+      if (!res.ok) return [];
+      const found = this.parseTLEData(await res.text()).slice(0, 50);
+      const expiry = now + 6 * 60 * 60 * 1000;
+      this.cache.set(key, found);
+      this.cacheExpiry.set(key, expiry);
+      // so that selecting a result doesn't need a second request
+      for (const t of found) { this.cache.set(`slug:${t.id}`, [t]); this.cacheExpiry.set(`slug:${t.id}`, expiry); }
+      return found;
+    } catch {
+      return [];
+    }
+  }
+
+  /** All members of a constellation with a single Celestrak name query (cached 6h). Missing/decayed members are skipped. */
+  async fetchGroup(query: string, memberIds: string[]): Promise<SatelliteConfig[]> {
+    return (await this.searchByName(query))
+      .filter(t => memberIds.includes(t.id))
+      .map(t => this.applyOverrides(t.name, t));
+  }
+
+  /**
+   * Fetch ONE satellite by its URL slug (e.g. "yam-11"). A few KB instead of the 47k-line
+   * `active` file, and it avoids Celestrak's 403 for re-downloading the same file within 2h.
+   * Returns undefined if not found; callers fall back to the full list.
+   */
+  async fetchSatelliteBySlug(slug: string): Promise<SatelliteConfig | undefined> {
+    const key = `slug:${slug.toLowerCase()}`;
+    const now = Date.now();
+    let hit = this.cacheExpiry.get(key)! > now ? this.cache.get(key)?.[0] : undefined;
+
+    // Slug is lossy ("landsat-8" <- "LANDSAT 8", "iss-zarya" <- "ISS (ZARYA)"), so widen the name query.
+    // Celestrak matches NAME as a case-insensitive substring; we then require an exact slug match.
+    for (const q of [slug, slug.replace(/-/g, ' '), slug.split('-')[0]]) {
+      if (hit) break;
+      try {
+        const res = await fetch(`https://celestrak.org/NORAD/elements/gp.php?NAME=${encodeURIComponent(q)}&FORMAT=tle`);
+        if (!res.ok) continue;
+        hit = this.parseTLEData(await res.text()).find(t => t.id === slug.toLowerCase());
+        if (hit) {
+          const expiry = now + 6 * 60 * 60 * 1000; // > Celestrak's 2h update interval
+          this.cache.set(key, [hit]);
+          this.cacheExpiry.set(key, expiry);
+          this.saveCacheToStorage(key, [hit], expiry);
+        }
+      } catch {
+        // network error: try the next query / fall back to the full list
+      }
+    }
+    return hit ? this.applyOverrides(hit.name, hit) : undefined;
+  }
+
+  /**
    * Parse TLE text format into structured data
    */
   private parseTLEData(tleText: string): TLEData[] {

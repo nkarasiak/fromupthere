@@ -64,77 +64,77 @@ export const SATELLITE_CONFIGS: SatelliteConfig[] = [
     alternateName: 'sentinel-2c - MSI',
     image: 'static/images/esa_sentinel2.png'
   },
-  // EarthDaily Constellation (EDC-01..08 = YAM-10..17; 10 planned). EDC-08 = YAM-17 is inferred from launch date.
+  // EarthDaily Constellation: EDC-01..08 = YAM-10..17 (verified by COSPAR designator vs CelesTrak; EDC-09/10 not launched). URL ids stay yam-NN (Celestrak names).
   {
     id: 'yam-10',
-    name: 'YAM-10',
-    alternateName: 'EarthDaily YAM-10',
+    name: 'EDC-01',
+    alternateName: 'EarthDaily EDC-01 (YAM-10)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   },
   {
     id: 'yam-11',
-    name: 'YAM-11',
-    alternateName: 'EarthDaily YAM-11',
+    name: 'EDC-02',
+    alternateName: 'EarthDaily EDC-02 (YAM-11)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   },
   {
     id: 'yam-12',
-    name: 'YAM-12',
-    alternateName: 'EarthDaily YAM-12',
+    name: 'EDC-03',
+    alternateName: 'EarthDaily EDC-03 (YAM-12)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   },
   {
     id: 'yam-13',
-    name: 'YAM-13',
-    alternateName: 'EarthDaily YAM-13',
+    name: 'EDC-04',
+    alternateName: 'EarthDaily EDC-04 (YAM-13)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   },
   {
     id: 'yam-14',
-    name: 'YAM-14',
-    alternateName: 'EarthDaily YAM-14',
+    name: 'EDC-05',
+    alternateName: 'EarthDaily EDC-05 (YAM-14)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   },
   {
     id: 'yam-15',
-    name: 'YAM-15',
-    alternateName: 'EarthDaily YAM-15',
+    name: 'EDC-06',
+    alternateName: 'EarthDaily EDC-06 (YAM-15)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   },
   {
     id: 'yam-16',
-    name: 'YAM-16',
-    alternateName: 'EarthDaily YAM-16',
+    name: 'EDC-07',
+    alternateName: 'EarthDaily EDC-07 (YAM-16)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   },
   {
     id: 'yam-17',
-    name: 'YAM-17',
-    alternateName: 'EarthDaily YAM-17',
+    name: 'EDC-08',
+    alternateName: 'EarthDaily EDC-08 (YAM-17)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 3,
-    defaultPitch: 60,
+    defaultZoom: 4.7,
+    defaultPitch: 62,
     scaleFactor: 1.5
   }
 ];
@@ -167,3 +167,19 @@ const STARLINK_CONSTELLATION = generateStarlinkConstellation();
 
 // Export combined satellite configuration
 export const SATELLITE_CONFIGS_WITH_STARLINK = [...SATELLITE_CONFIGS, ...STARLINK_CONSTELLATION];
+
+// Let URLs use a config satellite's display name too: /edc-03 -> yam-12
+export const resolveSatelliteId = (slug: string): string =>
+  SATELLITE_CONFIGS.find(c => c.name?.toLowerCase().replace(/[^a-z0-9]/g, '-') === slug.toLowerCase())?.id ?? slug;
+
+
+// Constellations viewable together (?group=<id>). `query` is ONE Celestrak name search that returns all members.
+export interface Constellation { id: string; name: string; query: string; members: string[]; color: [number, number, number]; swathKm: number }
+export const CONSTELLATIONS: Constellation[] = [
+  { id: 'edc', name: 'EarthDaily', query: 'YAM-', members: Array.from({ length: 8 }, (_, i) => `yam-${10 + i}`), color: [0, 214, 255], swathKm: 240 }, // EarthDaily docs: 240 km swath
+  { id: 'sentinel-2', name: 'Sentinel-2', query: 'SENTINEL-2', members: ['sentinel-2a', 'sentinel-2b', 'sentinel-2c'], color: [90, 150, 255], swathKm: 290 }, // MSI nominal swath
+  { id: 'sentinel-1', name: 'Sentinel-1', query: 'SENTINEL-1', members: ['sentinel-1a', 'sentinel-1c', 'sentinel-1d'], color: [170, 130, 255], swathKm: 250 }, // 1B was lost in 2021; IW mode swath
+  { id: 'landsat', name: 'Landsat', query: 'LANDSAT', members: ['landsat-8', 'landsat-9'], color: [255, 176, 64], swathKm: 185 }
+];
+export const constellationOf = (satelliteId: string | null) =>
+  CONSTELLATIONS.find(g => satelliteId !== null && g.members.includes(satelliteId));
