@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🌐 Constellation view
+- **`?group=<id>` overview** (`edc`, `sentinel-2`, `sentinel-1`, `landsat`): every satellite of a constellation at once, at its real altitude, on its real orbit, framed face-on so the orbit is a full ring around the Earth. Reachable from the search palette (`/`) and a "View constellation" button on member satellites. Click a satellite to track it.
+- **Time-lapse**: the camera is fixed in inertial space so the Earth visibly turns under the ring while satellites run round it and paint their ground tracks and swath (EarthDaily 240 km) onto the surface. Play/pause, speed (×1 to ×1800), restart and a simulated UTC clock.
+- Rendered by a deck.gl `MapboxOverlay` inside MapLibre's globe (the flat overlay cannot sit correctly on the globe at whole-Earth zoom). Orbits are drawn as line segments (PathLayer's lng/lat tessellation draws a spurious circle at the poles). Everything is drawn at full strength, including behind the Earth.
+- **EarthDaily naming**: EDC-01 to EDC-08 = YAM-10 to YAM-17 (verified by COSPAR designator); `/edc-03` URLs resolve to the right satellite.
+
+### 🌗 Day / night
+- One continuous globe: NASA VIIRS city lights are faded in over the day imagery by the sun's elevation at every pixel (soft twilight terminator), replacing the per-satellite basemap swap. Accurate sun position (equation of time included). Follows the simulated clock in the time-lapse.
+
+### 🔧 Fixes
+- Satellite search palette no longer empty when CelesTrak rate-limits the full catalogue (403): falls back to known satellites and name queries; selecting loads the satellite on demand.
+- Deep links to any satellite load a single targeted CelesTrak query (cached) instead of the 47k-line `active` file.
+- Camera defaults to zoom 4.7 / pitch 62 everywhere (URL params still win); fixed races that cancelled the fly-in (stale deck zoom, early tracking start).
+- Multisampling enabled on the map canvas (aliasing).
+- GitHub Pages subpath (`/fromupthere/`): icon paths, routing and 404 redirect.
+
 ## [0.3.0] - 2025-01-06
 
 ### 🌍 New Features
