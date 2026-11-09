@@ -37,7 +37,7 @@ export async function resolveSatelliteImage(satelliteId: string): Promise<string
   // Try different image extensions
   for (const extension of IMAGE_EXTENSIONS) {
     const imagePath = `${IMAGE_BASE_PATH}${satelliteId}.${extension}`;
-    const fullUrl = `/${imagePath}`;
+    const fullUrl = `${import.meta.env.BASE_URL}${imagePath}`;
     
     if (await checkImageExists(fullUrl)) {
       imageCache.set(satelliteId, imagePath);

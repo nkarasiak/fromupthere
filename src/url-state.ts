@@ -1,3 +1,7 @@
+// '' in dev, '/fromupthere' on GitHub Pages (Vite base without trailing slash)
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+const routePath = () => window.location.pathname.slice(BASE.length) || '/';
+
 export class URLState {
   private isInitializing = true;
 
@@ -7,7 +11,7 @@ export class URLState {
   }
 
   private handleUrlRewriting() {
-    const path = window.location.pathname;
+    const path = routePath();
     
     // Handle /satellite-id format - keep the new format, don't rewrite it
     const satelliteMatch = path.match(/^\/([^\/]+)$/);
@@ -20,7 +24,7 @@ export class URLState {
     const trackerMatch = path.match(/^\/tracker\/([^\/]+)$/);
     if (trackerMatch) {
       const url = new URL(window.location.href);
-      url.pathname = `/${encodeURIComponent(trackerMatch[1])}`;
+      url.pathname = `${BASE}/${encodeURIComponent(trackerMatch[1])}`;
       window.history.replaceState({}, '', url.toString());
       return;
     }
@@ -30,7 +34,7 @@ export class URLState {
     const satelliteParam = urlParams.get('satellite');
     if (satelliteParam && path === '/') {
       const url = new URL(window.location.href);
-      url.pathname = `/${encodeURIComponent(satelliteParam)}`;
+      url.pathname = `${BASE}/${encodeURIComponent(satelliteParam)}`;
       url.searchParams.delete('satellite');
       window.history.replaceState({}, '', url.toString());
       return;
@@ -47,14 +51,14 @@ export class URLState {
       if (satelliteMatch && redirectPath !== '/') {
         const satelliteId = decodeURIComponent(satelliteMatch[1]);
         const url = new URL(window.location.href);
-        url.pathname = `/${encodeURIComponent(satelliteId)}`;
+        url.pathname = `${BASE}/${encodeURIComponent(satelliteId)}`;
         redirectUrlParams.delete('redirect');
         url.search = redirectUrlParams.toString();
         window.history.replaceState({}, '', url.toString());
       } else if (trackerMatch) {
         const satelliteId = decodeURIComponent(trackerMatch[1]);
         const url = new URL(window.location.href);
-        url.pathname = `/${encodeURIComponent(satelliteId)}`;
+        url.pathname = `${BASE}/${encodeURIComponent(satelliteId)}`;
         redirectUrlParams.delete('redirect');
         url.search = redirectUrlParams.toString();
         window.history.replaceState({}, '', url.toString());
@@ -64,7 +68,7 @@ export class URLState {
     // Default to ISS tracker if on homepage with no satellite specified and no redirect parameter
     if (path === '/' && !urlParams.get('satellite') && !urlParams.get('name') && !urlParams.get('redirect')) {
       const url = new URL(window.location.href);
-      url.pathname = '/iss-zarya';
+      url.pathname = `${BASE}/iss-zarya`;
       url.searchParams.set('zoom', '4');
       url.searchParams.set('pitch', '60');
       window.history.replaceState({}, '', url.toString());
@@ -86,7 +90,7 @@ export class URLState {
     }
     
     // If we're on a satellite path (not homepage), provide better defaults
-    const path = window.location.pathname;
+    const path = routePath();
     const satelliteMatch = path.match(/^\/([^\/]+)$/);
     if (satelliteMatch && path !== '/') {
       return 4; // Better default zoom for satellite tracking
@@ -105,7 +109,7 @@ export class URLState {
     }
     
     // If we're on a satellite path (not homepage), provide better defaults
-    const path = window.location.pathname;
+    const path = routePath();
     const satelliteMatch = path.match(/^\/([^\/]+)$/);
     if (satelliteMatch && path !== '/') {
       return 60; // Better default pitch for satellite tracking (looking up)
@@ -121,7 +125,7 @@ export class URLState {
 
   getInitialSatellite(): string | null {
     // First check if we're on a /satellite-id path
-    const path = window.location.pathname;
+    const path = routePath();
     const satelliteMatch = path.match(/^\/([^\/]+)$/);
     if (satelliteMatch && path !== '/') {
       return decodeURIComponent(satelliteMatch[1]);
@@ -156,17 +160,17 @@ export class URLState {
     let urlChanged = false;
     
     // Handle satellite tracking with pretty URLs
-    const currentPath = url.pathname;
+    const currentPath = routePath();
     const isCurrentlySatellitePath = currentPath.match(/^\/([^\/]+)$/) && currentPath !== '/';
     const currentSatellite = isCurrentlySatellitePath ? decodeURIComponent(currentPath.substring(1)) : url.searchParams.get('satellite');
     
     if (followingSatellite !== currentSatellite) {
       if (followingSatellite) {
         // Use pretty URL format /satellite-id
-        url.pathname = `/${encodeURIComponent(followingSatellite)}`;
+        url.pathname = `${BASE}/${encodeURIComponent(followingSatellite)}`;
       } else {
         // No satellite tracking, go back to home
-        url.pathname = '/';
+        url.pathname = `${BASE}/`;
       }
       // Clear satellite query parameter when using path-based routing
       url.searchParams.delete('satellite');
@@ -232,8 +236,8 @@ export class URLState {
   removeInvalidSatellite() {
     const url = new URL(window.location.href);
     // If we're on a satellite path, go back to home
-    if (url.pathname.match(/^\/([^\/]+)$/) && url.pathname !== '/') {
-      url.pathname = '/';
+    if (routePath().match(/^\/([^\/]+)$/) && routePath() !== '/') {
+      url.pathname = `${BASE}/`;
     }
     url.searchParams.delete('satellite');
     window.history.replaceState({}, '', url.toString());
@@ -249,14 +253,14 @@ export class URLState {
   navigateToSatellite(satelliteId: string) {
     // Use pretty URL format /satellite-id
     const url = new URL(window.location.href);
-    url.pathname = `/${encodeURIComponent(satelliteId)}`;
+    url.pathname = `${BASE}/${encodeURIComponent(satelliteId)}`;
     url.search = ''; // Clear query parameters
     window.history.pushState({}, '', url.toString());
   }
 
   navigateToHome() {
     const url = new URL(window.location.href);
-    url.pathname = '/';
+    url.pathname = `${BASE}/`;
     url.searchParams.delete('satellite');
     window.history.pushState({}, '', url.toString());
   }

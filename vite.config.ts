@@ -3,7 +3,7 @@ import checker from 'vite-plugin-checker'
 import { visualizer } from 'rollup-plugin-visualizer'
 
 export default defineConfig({
-  base: process.env.NODE_ENV === 'production' ? '/' : '/',
+  base: process.env.NODE_ENV === 'production' ? '/fromupthere/' : '/',
   publicDir: 'public',
   plugins: [
     checker({

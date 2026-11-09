@@ -64,6 +64,7 @@ export const SATELLITE_CONFIGS: SatelliteConfig[] = [
     alternateName: 'sentinel-2c - MSI',
     image: 'static/images/esa_sentinel2.png'
   },
+  // EarthDaily Constellation (EDC-01..08 = YAM-10..17; 10 planned). EDC-08 = YAM-17 is inferred from launch date.
   {
     id: 'yam-10',
     name: 'YAM-10',
@@ -72,7 +73,70 @@ export const SATELLITE_CONFIGS: SatelliteConfig[] = [
     defaultZoom: 3,
     defaultPitch: 60,
     scaleFactor: 1.5
-	}
+  },
+  {
+    id: 'yam-11',
+    name: 'YAM-11',
+    alternateName: 'EarthDaily YAM-11',
+    image: 'static/images/earthdaily_yam10.webp',
+    defaultZoom: 3,
+    defaultPitch: 60,
+    scaleFactor: 1.5
+  },
+  {
+    id: 'yam-12',
+    name: 'YAM-12',
+    alternateName: 'EarthDaily YAM-12',
+    image: 'static/images/earthdaily_yam10.webp',
+    defaultZoom: 3,
+    defaultPitch: 60,
+    scaleFactor: 1.5
+  },
+  {
+    id: 'yam-13',
+    name: 'YAM-13',
+    alternateName: 'EarthDaily YAM-13',
+    image: 'static/images/earthdaily_yam10.webp',
+    defaultZoom: 3,
+    defaultPitch: 60,
+    scaleFactor: 1.5
+  },
+  {
+    id: 'yam-14',
+    name: 'YAM-14',
+    alternateName: 'EarthDaily YAM-14',
+    image: 'static/images/earthdaily_yam10.webp',
+    defaultZoom: 3,
+    defaultPitch: 60,
+    scaleFactor: 1.5
+  },
+  {
+    id: 'yam-15',
+    name: 'YAM-15',
+    alternateName: 'EarthDaily YAM-15',
+    image: 'static/images/earthdaily_yam10.webp',
+    defaultZoom: 3,
+    defaultPitch: 60,
+    scaleFactor: 1.5
+  },
+  {
+    id: 'yam-16',
+    name: 'YAM-16',
+    alternateName: 'EarthDaily YAM-16',
+    image: 'static/images/earthdaily_yam10.webp',
+    defaultZoom: 3,
+    defaultPitch: 60,
+    scaleFactor: 1.5
+  },
+  {
+    id: 'yam-17',
+    name: 'YAM-17',
+    alternateName: 'EarthDaily YAM-17',
+    image: 'static/images/earthdaily_yam10.webp',
+    defaultZoom: 3,
+    defaultPitch: 60,
+    scaleFactor: 1.5
+  }
 ];
 
 // Starlink constellation generator for realistic mega-constellation
