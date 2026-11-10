@@ -373,7 +373,7 @@ class SatelliteTracker3D {
       if (group) {
         this.satelliteTracker.enableExternalSatelliteLoading();
         this.openConstellation(group);
-        setInterval(() => this.updateUI(), 5000);
+        setInterval(() => this.updateUI(), 1000); // as when tracking: a click on a satellite starts tracking it
         return;
       }
 
@@ -500,7 +500,7 @@ class SatelliteTracker3D {
     this.isInitializing = true;
     this.urlState.setInitializing(true);
     if (pushUrl) this.urlState.navigateToGroup(group.id);
-    if (!(await this.satelliteTracker.showConstellation(group)) && this.satelliteTracker.loadConfigSatelliteById('iss-zarya')) {
+    if (!(await this.satelliteTracker.showConstellation(group, pushUrl ? 0 : this.urlState.getInitialPitch())) && this.satelliteTracker.loadConfigSatelliteById('iss-zarya')) {
       this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62); // load failed: fall back to the ISS
     }
     setTimeout(() => { this.urlState.setInitializing(false); this.isInitializing = false; }, 3500);
@@ -748,8 +748,12 @@ class SatelliteTracker3D {
       }
     }
     
-    // Update tracked satellite information
-    if (followingSatellite) {
+    // Constellation view: the bar shows the constellation; per-satellite readouts are hidden (see cockpit.css)
+    const constellation = this.satelliteTracker.getConstellationName();
+    document.getElementById('banner-display')?.classList.toggle('constellation-mode', !!constellation);
+    if (constellation) {
+      if (trackedNameElement) trackedNameElement.textContent = constellation;
+    } else if (followingSatellite) {
       const trackedSatellite = satellites.get(followingSatellite);
       if (trackedSatellite) {
         if (trackedAltitudeElement) trackedAltitudeElement.textContent = trackedSatellite.altitude.toFixed(0);
@@ -765,7 +769,7 @@ class SatelliteTracker3D {
       if (trackedPositionElement) trackedPositionElement.textContent = '---';
     }
     const utcClock = document.getElementById('utc-clock');
-    if (utcClock) utcClock.textContent = new Date().toISOString().slice(11, 19);
+    if (utcClock && !constellation) utcClock.textContent = new Date().toISOString().slice(11, 19);
   }
 }
 

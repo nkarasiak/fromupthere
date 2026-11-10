@@ -30,73 +30,30 @@
 }
 #constellation-link:hover { background: rgba(0, 255, 170, 0.2); }
 
-/* Constellation time-lapse controls: same glass as the top banner */
-#timelapse {
-  position: fixed;
-  left: 50%;
-  bottom: 20px;
-  transform: translateX(-50%);
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 6px 8px;
-  font: 600 13px/1 Inter, -apple-system, BlinkMacSystemFont, sans-serif;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  white-space: nowrap;
-}
+/* Constellation time-lapse: the "Speed" slot of the top banner, as quiet as the banner's other values */
+#timelapse { gap: 2px; }
+#timelapse .banner-label { margin-right: 2px; }
 #timelapse button {
   font: inherit;
-  color: #fff;
+  color: #777;
   background: none;
   border: 0;
+  border-radius: 4px;
+  padding: 3px 4px;
   cursor: pointer;
-}
-#timelapse button:focus-visible { outline: 2px solid #00d4ff; outline-offset: 2px; }
-#timelapse .tl-round {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 14px;
-  background: rgba(255, 255, 255, 0.08);
-  transition: background 0.2s;
+  transition: color 0.2s;
 }
-#timelapse .tl-round:hover { background: rgba(0, 212, 255, 0.25); }
-#tl-play { background: rgba(0, 212, 255, 0.2) !important; color: #00d4ff !important; }
-#tl-play:hover { background: rgba(0, 212, 255, 0.35) !important; }
-.tl-group { display: flex; align-items: center; gap: 8px; }
-.tl-label {
-  color: #aaa;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.tl-seg {
-  display: flex;
-  padding: 2px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-}
-#timelapse .tl-seg button {
-  padding: 5px 10px;
-  border-radius: 999px;
-  color: #aaa;
+#timelapse button:hover { color: #fff; }
+#timelapse button:focus-visible { outline: 1px solid rgba(0, 212, 255, 0.6); outline-offset: 1px; }
+#tl-speed {
+  min-width: 3.4em;
+  color: #fff !important;
+  font-size: 13px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  transition: color 0.2s, background 0.2s;
 }
-#timelapse .tl-seg button:hover { color: #fff; }
-#timelapse .tl-seg button[aria-checked="true"] { color: #000; background: #00d4ff; }
-#tl-clock { min-width: 118px; font-variant-numeric: tabular-nums; }
-@media (max-width: 520px) {
-  #timelapse { gap: 10px; bottom: 12px; }
-  #timelapse .tl-label { display: none; }
-  #tl-clock { min-width: 0; }
-}
+#tl-speed:hover { color: #00d4ff !important; }
+#tl-reset { font-size: 12px; }
+

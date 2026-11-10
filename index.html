@@ -92,19 +92,23 @@
     <div id="cockpit-panel">
       <!-- Single Line Banner Layout -->
       <div id="banner-display">
-        <div class="banner-item banner-extra">
-          <span class="banner-label">UTC</span>
+        <!-- Left and right halves share the width equally: the name stays at the exact centre -->
+        <div class="banner-side banner-left">
+        <div class="banner-item banner-extra" id="utc-item">
+          <span class="banner-label" id="utc-label">UTC</span>
           <span class="banner-value" id="utc-clock">--:--:--</span>
         </div>
 
         <div class="banner-separator banner-extra"></div>
 
-        <div class="banner-item">
+        <div class="banner-item sat-only">
           <span class="banner-label">Alt</span>
           <span class="banner-value"><span id="tracked-altitude">---</span><span class="banner-unit">km</span></span>
         </div>
 
-        <div class="banner-separator"></div>
+        <div class="banner-separator sat-only"></div>
+
+        </div>
 
         <!-- Tracking (Clickable) -->
         <div class="banner-item tracking" data-section="search" title="Click to search satellites (or press /)">
@@ -112,18 +116,20 @@
           <span class="tracking-name" id="tracked-name">No satellite selected</span>
         </div>
 
-        <div class="banner-separator"></div>
+        <div class="banner-side banner-right">
+        <div class="banner-separator sat-only"></div>
 
-        <div class="banner-item">
+        <div class="banner-item sat-only">
           <span class="banner-label">Vel</span>
           <span class="banner-value"><span id="tracked-speed">---</span><span class="banner-unit">km/s</span></span>
         </div>
 
-        <div class="banner-separator banner-extra"></div>
+        <div class="banner-separator banner-extra sat-only"></div>
 
-        <div class="banner-item banner-extra">
+        <div class="banner-item banner-extra sat-only">
           <span class="banner-label">Pos</span>
           <span class="banner-value" id="tracked-position">---</span>
+        </div>
         </div>
       </div>
 

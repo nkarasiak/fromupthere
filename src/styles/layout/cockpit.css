@@ -184,3 +184,35 @@
 
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -6px); } }
 @keyframes toast-out { to { opacity: 0; } }
+
+/* Constellation view: the bar names the constellation; per-satellite readouts don't apply */
+#banner-display.constellation-mode .sat-only {
+  display: none;
+}
+/* ...but its (simulated) clock stays on small screens, where the real-time one is hidden */
+#banner-display.constellation-mode #utc-item {
+  display: flex;
+}
+
+/* Left and right halves of equal width around the name, which therefore sits at the exact centre */
+.banner-side {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: inherit;
+}
+.banner-left { justify-content: flex-end; }
+.banner-right { justify-content: flex-start; }
+
+/* Label and value share a text baseline (centring them put a 13 px value 3 px above its 11 px label) */
+.banner-item:has(> .banner-label) {
+  align-items: baseline;
+}
+
+/* Clock and date: same size as the other values, lighter, as they change constantly */
+#utc-clock, #tl-date {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: #ddd;
+}

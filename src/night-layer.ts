@@ -7,6 +7,9 @@ import { SolarCalculator } from './utils/solar-calculator';
 // globe, terrain and any pitch.
 
 export const NIGHT_REFRESH_MS = 2 * 60 * 1000; // the sun moves ~0.5 deg in 2 min: re-render the tiles that often
+// ...but never more often than this in real time: a fast time-lapse (x300: every second) re-rendered and uploaded
+// every tile nonstop, which piled up into GPU stalls of a second or more
+const MIN_REAL_REFRESH_MS = 3000;
 
 const RAD = Math.PI / 180;
 const tileUrl = (z: number, x: number, y: number) =>
@@ -115,6 +118,7 @@ export function installNightShading(map: MapLibreMap, beforeLayerId?: string) {
   const apply = () => {
     const t = timeKey();
     if (t === applied || pending >= 0) return; // one load at a time: the next time starts once this one is shown
+    if (performance.now() - pendingSince < MIN_REAL_REFRESH_MS) return;
     pendingSince = performance.now();
     pending = t;
     (map.getSource(ids[1 - front]) as RasterTileSource | undefined)?.setTiles(tiles(t));
