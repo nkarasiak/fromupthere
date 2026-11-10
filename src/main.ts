@@ -407,9 +407,7 @@ class SatelliteTracker3D {
             const pitchToUse = isDefaultISS ? 62 : this.urlState.getInitialPitch();
             
             
-            // Get satellite data to check for default bearing and other properties
             const satellite = this.satelliteTracker.getSatellites().get(satelliteToTrack);
-            const bearingToUse = satellite?.defaultBearing ?? this.urlState.getInitialBearing();
             
             // Use satellite-specific zoom and pitch if available
             const finalZoomToUse = satellite?.defaultZoom ?? zoomToUse;
@@ -418,7 +416,6 @@ class SatelliteTracker3D {
             console.log(`🎯 Tracking satellite "${satelliteToTrack}" with:`, {
               zoom: finalZoomToUse,
               pitch: finalPitchToUse,
-              bearing: bearingToUse,
               altitude: satellite?.altitude,
               position: satellite?.position ? `${satellite.position.lat.toFixed(2)}, ${satellite.position.lng.toFixed(2)}` : 'undefined'
             });
@@ -427,8 +424,7 @@ class SatelliteTracker3D {
               this.satelliteTracker.followSatelliteWithAnimation(
                 satelliteToTrack, 
                 finalZoomToUse,
-                finalPitchToUse,
-                bearingToUse
+                finalPitchToUse
               );
             } else {
               console.warn(`⚠️ Satellite "${satelliteToTrack}" not found or has no position`);
@@ -462,14 +458,10 @@ class SatelliteTracker3D {
             
             // Track the satellite immediately
             setTimeout(() => {
-              const satellite = this.satelliteTracker.getSatellites().get(satelliteToTrack);
-              const bearingToUse = satellite?.defaultBearing ?? this.urlState.getInitialBearing();
-              
               this.satelliteTracker.followSatelliteWithAnimation(
                 satelliteToTrack, 
                 zoomToUse,
-                pitchToUse,
-                bearingToUse
+                pitchToUse
               );
             }, 100);
             
@@ -483,7 +475,7 @@ class SatelliteTracker3D {
             if (issLoaded) {
               this.satelliteTracker.updateLayers();
               this.satelliteTracker.startBackgroundUpdates();
-              this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62, 0);
+              this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62);
               
               // Satellites will be loaded on-demand when searching
             } else {
@@ -509,7 +501,7 @@ class SatelliteTracker3D {
     this.urlState.setInitializing(true);
     if (pushUrl) this.urlState.navigateToGroup(group.id);
     if (!(await this.satelliteTracker.showConstellation(group)) && this.satelliteTracker.loadConfigSatelliteById('iss-zarya')) {
-      this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62, 0); // load failed: fall back to the ISS
+      this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62); // load failed: fall back to the ISS
     }
     setTimeout(() => { this.urlState.setInitializing(false); this.isInitializing = false; }, 3500);
     this.updateUI();

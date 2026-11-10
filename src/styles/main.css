@@ -30,34 +30,73 @@
 }
 #constellation-link:hover { background: rgba(0, 255, 170, 0.2); }
 
-/* Constellation time-lapse controls */
+/* Constellation time-lapse controls: same glass as the top banner */
 #timelapse {
   position: fixed;
   left: 50%;
-  bottom: 16px;
+  bottom: 20px;
   transform: translateX(-50%);
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  font: 500 12px/1 Inter, sans-serif;
+  gap: 18px;
+  padding: 6px 8px;
+  font: 600 13px/1 Inter, -apple-system, BlinkMacSystemFont, sans-serif;
   color: #fff;
-  background: rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 8px;
-  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  white-space: nowrap;
 }
-#timelapse button, #timelapse select {
+#timelapse button {
   font: inherit;
   color: #fff;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  padding: 4px 8px;
+  background: none;
+  border: 0;
   cursor: pointer;
 }
-#timelapse button:hover, #timelapse select:hover { background: rgba(0, 214, 255, 0.25); }
-#timelapse select option { color: #000; }
-#timelapse button.on { background: rgba(0, 214, 255, 0.35); border-color: rgba(0, 214, 255, 0.8); }
-#tl-clock { min-width: 150px; opacity: 0.85; font-variant-numeric: tabular-nums; }
+#timelapse button:focus-visible { outline: 2px solid #00d4ff; outline-offset: 2px; }
+#timelapse .tl-round {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.2s;
+}
+#timelapse .tl-round:hover { background: rgba(0, 212, 255, 0.25); }
+#tl-play { background: rgba(0, 212, 255, 0.2) !important; color: #00d4ff !important; }
+#tl-play:hover { background: rgba(0, 212, 255, 0.35) !important; }
+.tl-group { display: flex; align-items: center; gap: 8px; }
+.tl-label {
+  color: #aaa;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.tl-seg {
+  display: flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+#timelapse .tl-seg button {
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: #aaa;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.2s, background 0.2s;
+}
+#timelapse .tl-seg button:hover { color: #fff; }
+#timelapse .tl-seg button[aria-checked="true"] { color: #000; background: #00d4ff; }
+#tl-clock { min-width: 118px; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) {
+  #timelapse { gap: 10px; bottom: 12px; }
+  #timelapse .tl-label { display: none; }
+  #tl-clock { min-width: 0; }
+}
