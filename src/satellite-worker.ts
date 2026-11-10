@@ -22,7 +22,7 @@ interface SatelliteCalcResult {
 const satelliteRecords = new Map<string, any>();
 
 // Batch processing for better performance
-let calculationQueue: SatelliteCalcRequest[] = [];
+const calculationQueue: SatelliteCalcRequest[] = [];
 let isProcessing = false;
 
 self.onmessage = function(e) {

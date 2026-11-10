@@ -200,7 +200,7 @@ export class SmoothTracker {
     // Linear interpolation for ultra-smooth movement
     let predictedLongitude = lastKnownPosition.longitude + (velocityVector.longitudePerMs * deltaTime);
     let predictedLatitude = lastKnownPosition.latitude + (velocityVector.latitudePerMs * deltaTime);
-    let predictedAltitude = lastKnownPosition.altitude + (velocityVector.altitudePerMs * deltaTime);
+    const predictedAltitude = lastKnownPosition.altitude + (velocityVector.altitudePerMs * deltaTime);
     
     // Handle longitude wrapping
     while (predictedLongitude > 180) predictedLongitude -= 360;

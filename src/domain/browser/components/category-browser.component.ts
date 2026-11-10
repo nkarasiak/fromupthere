@@ -69,9 +69,8 @@ export class CategoryBrowserComponent {
     });
     
     // Also update count periodically for the first 30 seconds as fallback
-    let updateInterval: NodeJS.Timeout;
     let attempts = 0;
-    updateInterval = setInterval(() => {
+    const updateInterval = setInterval(() => {
       updateCount();
       attempts++;
       
