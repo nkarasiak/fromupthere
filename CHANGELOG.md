@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🌐 Constellation view
 - **`?group=<id>` overview** (`edc`, `sentinel-2`, `sentinel-1`, `landsat`): every satellite of a constellation at once, at its real altitude, on its real orbit, framed face-on so the orbit is a full ring around the Earth. Reachable from the search palette (`/`) and a "View constellation" button on member satellites. Click a satellite to track it.
-- **Time-lapse**: the camera is fixed in inertial space so the Earth visibly turns under the ring while satellites run round it and paint their ground tracks and swath (EarthDaily 240 km) onto the surface. Play/pause, speed (×1 to ×1800), restart and a simulated UTC clock.
-- Rendered by a deck.gl `MapboxOverlay` inside MapLibre's globe (the flat overlay cannot sit correctly on the globe at whole-Earth zoom). Orbits are drawn as line segments (PathLayer's lng/lat tessellation draws a spurious circle at the poles). Everything is drawn at full strength, including behind the Earth.
+- **Time-lapse**: the camera is fixed in inertial space so the Earth visibly turns under the ring while satellites run round it and paint their swath (EarthDaily 240 km) onto the surface. Play/pause, speed (×1, ×10, ×100), restart and a simulated UTC clock.
+- **Swaths that match the real geometry**: each satellite's dot sits on its ground point at the head of its own footprint (bright for the last 4 min, faint for the last 90 min), cut and faded on the GPU so it moves smoothly. Drawn only in daylight (sun ≥ 10° at nadir). One faint orbit ring per orbital plane.
+- **"24 h" coverage**: keeps a full simulated day of daylight swaths; ground left untinted had no pass that day.
+- Rendered by a deck.gl `MapboxOverlay` inside MapLibre's globe (the flat overlay cannot sit correctly on the globe at whole-Earth zoom); the far side is hidden by the Earth.
 - **EarthDaily naming**: EDC-01 to EDC-08 = YAM-10 to YAM-17 (verified by COSPAR designator); `/edc-03` URLs resolve to the right satellite.
 
 ### 🌗 Day / night
@@ -21,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deep links to any satellite load a single targeted CelesTrak query (cached) instead of the 47k-line `active` file.
 - Camera defaults to zoom 4.7 / pitch 62 everywhere (URL params still win); fixed races that cancelled the fly-in (stale deck zoom, early tracking start).
 - Multisampling enabled on the map canvas (aliasing).
+- Swaths no longer lag their satellite or appear where none flew (deck re-cut globe paths without their per-vertex timestamps/colours).
+- MapLibre 5.24: no more tile explosion (2 fps) on the globe at high pitch.
 - GitHub Pages subpath (`/fromupthere/`): icon paths, routing and 404 redirect.
 
 ## [0.3.0] - 2025-01-06
