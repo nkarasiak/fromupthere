@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🌐 Constellation view
 - **`?group=<id>` overview** (`edc`, `sentinel-2`, `sentinel-1`, `landsat`): every satellite of a constellation at once, on its real orbit. The orbit is seen edge-on over its daylit pass, so the ground track runs down the middle of a globe that fills the screen. Reachable from the search palette (`/`) and a "View constellation" button on member satellites. Click a satellite to track it.
-- **Time-lapse**: the camera is fixed in inertial space so the Earth visibly turns under the ring while satellites run round it and paint their swath (EarthDaily 240 km) onto the surface. Play/pause, speed (×1, ×10, ×100, ×300), restart and a simulated UTC clock, in a bar styled like the top banner.
-- **Swaths that match the real geometry**: each satellite's dot sits on its ground point at the head of its own footprint (bright for the last 4 min, faint for the last 90 min), cut and faded on the GPU so it moves smoothly. Drawn only in daylight (sun ≥ 10° at nadir). One faint orbit ring per orbital plane.
+- **Time-lapse**: the camera is fixed in inertial space so the Earth visibly turns under the ring while satellites run round it and paint their swath (EarthDaily 240 km) onto the surface. Play/pause, speed (one value: a click steps ×1 → ×10 → ×100 → ×300) and restart live in the top banner, laid out like the single-satellite one (Date · Sim UTC · constellation · Sats · Speed); its clock shows the simulated time, so only one clock is on screen.
+- **Swaths that match the real geometry**: each satellite flies at its real altitude on its orbit ring, tied by a translucent sensor cone to both ends of the scan line it is imaging; its footprint (bright for the last 4 min, faint for the last 90 min) is cut and faded on the GPU so it moves smoothly. Optical swaths are drawn only in daylight (sun ≥ 10° at nadir); Sentinel-1 (radar) images day and night. One faint orbit ring per orbital plane.
 - Rendered by a deck.gl `MapboxOverlay` inside MapLibre's globe (the flat overlay cannot sit correctly on the globe at whole-Earth zoom); the far side is hidden by the Earth.
 - **EarthDaily naming**: EDC-01 to EDC-08 = YAM-10 to YAM-17 (verified by COSPAR designator); `/edc-03` URLs resolve to the right satellite.
 
@@ -26,7 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multisampling enabled on the map canvas (aliasing).
 - Swaths no longer lag their satellite or appear where none flew (deck re-cut globe paths without their per-vertex timestamps/colours).
 - MapLibre 5.24: no more tile explosion (2 fps) on the globe at high pitch.
-- Constellation view tilted (Ctrl-drag) or rotated: swaths, rings and satellites stay on the globe, and a satellite stays on its footprint up to the horizon, then it and its label slide behind the limb, hidden by the Earth progressively (deck.gl 9.1 → 9.4: its globe ignored pitch and bearing).
+- Overlapping satellite labels: the farther of two overlapping labels fades out (a far label's text printed through a near label's box), and dots are drawn above labels so none is hidden.
+- Constellation time-lapse holds 60 fps at ×300: no per-frame forced layout (cached map height), the empty flat overlay is no longer redrawn and composited, night tiles re-render at most every 3 s of real time.
+- Constellation view keeps `pitch` from the URL on reload.
+- Lint runs again (`.eslintrc.json` extended a config that doesn't exist).
+- Constellation view tilted (Ctrl-drag) or rotated: swaths, rings and satellites stay on the globe, and a satellite and its label slide behind the limb when the Earth blocks the line of sight to them, hidden progressively (deck.gl 9.1 → 9.4: its globe ignored pitch and bearing).
 - GitHub Pages subpath (`/fromupthere/`): icon paths, routing and 404 redirect.
 
 ## [0.3.0] - 2025-01-06
