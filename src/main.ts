@@ -72,6 +72,7 @@ class SatelliteTracker3D {
       bearing: initialBearing, // Use bearing from URL
       attributionControl: false, // Disable default attribution control to avoid duplicates
       maxPitch: 85, // Allow up to 85 degrees tilt for 3D terrain viewing
+      minZoom: -2, // room for geostationary orbits in the constellation view
       pitchWithRotate: false, // Disable pitch-with-rotate to avoid conflicts
       dragRotate: false, // Disable default drag rotate
       touchPitch: false, // Disable touch pitch

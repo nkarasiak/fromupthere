@@ -1,6 +1,6 @@
 // Dynamic satellite data fetcher with TLE from external sources
 import { SatelliteConfig } from './types/satellite';
-import { SATELLITE_CONFIGS_WITH_STARLINK } from './config/satellites';
+import { SATELLITE_CONFIGS_WITH_STARLINK, Constellation } from './config/satellites';
 
 export interface TLEData {
   id: string;
@@ -185,11 +185,40 @@ export class SatelliteDataFetcher {
     }
   }
 
-  /** All members of a constellation with a single Celestrak name query (cached 6h). Missing/decayed members are skipped. */
-  async fetchGroup(query: string, memberIds: string[]): Promise<SatelliteConfig[]> {
-    return (await this.searchByName(query))
-      .filter(t => memberIds.includes(t.id))
-      .map(t => this.applyOverrides(t.name, t));
+  /**
+   * The operational members of a constellation: every name search's TLEs, kept if their id matches the group and
+   * SATCAT lists them as active (+ P B S X). Cached 6h, persisted (Celestrak answers 403 to a repeat within 2h);
+   * on a network error the last result is used even if expired.
+   */
+  async fetchGroup(group: Constellation): Promise<SatelliteConfig[]> {
+    const key = `group:${group.id}`;
+    let tles = this.cacheExpiry.get(key)! > Date.now() ? this.cache.get(key) : undefined;
+    if (!tles) {
+      const get = (url: string) => fetch(`https://celestrak.org/${url}`).then(r => (r.ok ? r : Promise.reject(new Error(`${r.status} ${url}`))));
+      const q = group.queries.map(encodeURIComponent);
+      try {
+        const [texts, active] = await Promise.all([
+          Promise.all(q.map(n => get(`NORAD/elements/gp.php?NAME=${n}&FORMAT=tle`).then(r => r.text()))),
+          Promise.all(q.map(n => get(`satcat/records.php?NAME=${n}&ACTIVE=1&FORMAT=json`).then(r => r.json())))
+            .then(lists => new Set(lists.flat().map((o: { NORAD_CAT_ID: number }) => o.NORAD_CAT_ID)))
+            .catch(() => null) // status unknown: keep everything rather than nothing
+        ]);
+        const seen = new Set<number>();
+        tles = texts.flatMap(t => this.parseTLEData(t)).filter(t => {
+          const norad = Number(t.catalogNumber);
+          if (seen.has(norad) || !group.match.test(t.id) || (active && !active.has(norad))) return false;
+          seen.add(norad);
+          return true;
+        });
+        const expiry = Date.now() + 6 * 60 * 60 * 1000;
+        this.cache.set(key, tles);
+        this.cacheExpiry.set(key, expiry);
+        if (tles.length) this.saveCacheToStorage(key, tles, expiry);
+      } catch {
+        tles = this.cache.get(key) ?? [];
+      }
+    }
+    return tles.map(t => this.applyOverrides(t.name, t));
   }
 
   /**

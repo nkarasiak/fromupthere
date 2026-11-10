@@ -173,14 +173,61 @@ export const resolveSatelliteId = (slug: string): string =>
   SATELLITE_CONFIGS.find(c => c.name?.toLowerCase().replace(/[^a-z0-9]/g, '-') === slug.toLowerCase())?.id ?? slug;
 
 
-// Constellations viewable together (?group=<id>). `query` is ONE Celestrak name search that returns all members.
+// Constellations viewable together (?group=<id>). `queries`: Celestrak name searches (case-insensitive substring),
+// merged; `match`, tested on the satellite id (slug of its name), drops whatever else they catch. Only satellites
+// Celestrak's SATCAT lists as operational are shown, so new launches join and dead ones leave without editing this.
+// swathKm: the main imager's nominal swath; 0 = not an Earth imager (no swath, no sensor cone).
 // radar: a SAR imager, which images day and night (optical swaths are drawn in daylight only)
-export interface Constellation { id: string; name: string; query: string; members: string[]; color: [number, number, number]; swathKm: number; radar?: boolean }
+export interface Constellation { id: string; name: string; queries: string[]; match: RegExp; color: [number, number, number]; swathKm: number; radar?: boolean }
 export const CONSTELLATIONS: Constellation[] = [
-  { id: 'sentinel-2', name: 'Sentinel-2', query: 'SENTINEL-2', members: ['sentinel-2a', 'sentinel-2b', 'sentinel-2c'], color: [90, 150, 255], swathKm: 290 }, // MSI nominal swath
-  { id: 'sentinel-1', name: 'Sentinel-1', query: 'SENTINEL-1', members: ['sentinel-1a', 'sentinel-1c', 'sentinel-1d'], color: [170, 130, 255], swathKm: 250, radar: true }, // 1B was lost in 2021; IW mode swath
-  { id: 'landsat', name: 'Landsat', query: 'LANDSAT', members: ['landsat-8', 'landsat-9'], color: [255, 176, 64], swathKm: 185 },
-  { id: 'edc', name: 'EarthDaily', query: 'YAM-', members: Array.from({ length: 8 }, (_, i) => `yam-${10 + i}`), color: [0, 214, 255], swathKm: 240 } // EarthDaily docs: 240 km swath
+  // Public Earth observation
+  { id: 'sentinel-2', name: 'Sentinel-2', queries: ['SENTINEL-2'], match: /^sentinel-2[a-z]$/, color: [90, 150, 255], swathKm: 290 }, // MSI
+  { id: 'sentinel-1', name: 'Sentinel-1', queries: ['SENTINEL-1'], match: /^sentinel-1[a-z]$/, color: [170, 130, 255], swathKm: 250, radar: true }, // IW mode
+  { id: 'sentinel-3', name: 'Sentinel-3', queries: ['SENTINEL-3'], match: /^sentinel-3[a-z]$/, color: [80, 200, 170], swathKm: 1270 }, // OLCI
+  { id: 'landsat', name: 'Landsat', queries: ['LANDSAT'], match: /^landsat-\d+$/, color: [255, 176, 64], swathKm: 185 },
+  { id: 'edc', name: 'EarthDaily', queries: ['YAM-'], match: /^yam-1[0-7]$/, color: [0, 214, 255], swathKm: 240 }, // EDC-01..08; YAM-2..9 are other Loft Orbital buses
+  { id: 'modis', name: 'MODIS', queries: ['TERRA', 'AQUA'], match: /^(terra|aqua)$/, color: [120, 220, 120], swathKm: 2330 },
+  { id: 'viirs', name: 'VIIRS (JPSS)', queries: ['SUOMI NPP', 'JPSS'], match: /^(suomi-npp|noaa-\d+-jpss-\d+)$/, color: [255, 120, 90], swathKm: 3060 },
+  { id: 'metop', name: 'MetOp', queries: ['METOP'], match: /^metop-[a-c]$/, color: [230, 200, 90], swathKm: 2900 }, // AVHRR (Metop-SG has none)
+  { id: 'fengyun-3', name: 'Fengyun-3', queries: ['FENGYUN 3'], match: /^fengyun-3[a-z]$/, color: [240, 90, 90], swathKm: 2900 }, // MERSI
+  { id: 'cbers', name: 'CBERS / Amazonia', queries: ['CBERS', 'AMAZONIA'], match: /^(cbers|amazonia)-/, color: [100, 210, 90], swathKm: 866 }, // WFI
+  // Commercial optical
+  { id: 'planet-dove', name: 'Planet SuperDove', queries: ['FLOCK'], match: /^flock-/, color: [80, 190, 255], swathKm: 32 },
+  { id: 'skysat', name: 'Planet SkySat', queries: ['SKYSAT'], match: /^skysat-/, color: [60, 160, 230], swathKm: 6 },
+  { id: 'pelican', name: 'Planet Pelican', queries: ['PELICAN'], match: /^pelican-\d+$/, color: [40, 130, 210], swathKm: 10 }, // approximate: Planet doesn't publish it
+  { id: 'maxar', name: 'Maxar WorldView', queries: ['WORLDVIEW', 'LEGION', 'GEOEYE'], match: /^(worldview|legion|geoeye)-/, color: [255, 140, 60], swathKm: 13 },
+  { id: 'pleiades', name: 'Pléiades', queries: ['PLEIADES'], match: /^pleiades-/, color: [220, 110, 200], swathKm: 20 }, // Neo: 14
+  { id: 'spot', name: 'SPOT', queries: ['SPOT'], match: /^spot-\d+$/, color: [200, 140, 230], swathKm: 60 },
+  { id: 'blacksky', name: 'BlackSky', queries: ['GLOBAL-'], match: /^global-\d+$/, color: [190, 190, 200], swathKm: 5 },
+  { id: 'satellogic', name: 'Satellogic', queries: ['NUSAT'], match: /^nusat-/, color: [120, 230, 200], swathKm: 5 },
+  { id: 'jilin-1', name: 'Jilin-1', queries: ['JILIN'], match: /^jilin-/, color: [255, 90, 120], swathKm: 17 }, // GF03 (Kuanfu: ~140)
+  { id: 'superview', name: 'SuperView', queries: ['SUPERVIEW'], match: /^superview-/, color: [255, 160, 160], swathKm: 12 },
+  { id: 'kompsat', name: 'KOMPSAT', queries: ['KOMPSAT'], match: /^(arirang-(?!5)|kompsat-)/, color: [100, 170, 255], swathKm: 15 }, // optical ones (KOMPSAT-5 is SAR)
+  // SAR
+  { id: 'iceye', name: 'ICEYE', queries: ['ICEYE'], match: /^iceye-/, color: [150, 220, 255], swathKm: 30, radar: true }, // stripmap
+  { id: 'capella', name: 'Capella', queries: ['CAPELLA'], match: /^capella-/, color: [255, 200, 120], swathKm: 10, radar: true },
+  { id: 'umbra', name: 'Umbra', queries: ['UMBRA'], match: /^umbra-/, color: [180, 180, 255], swathKm: 10, radar: true },
+  { id: 'cosmo-skymed', name: 'COSMO-SkyMed', queries: ['COSMO-SKYMED', 'CSG'], match: /^(cosmo-skymed|csg)-/, color: [120, 200, 255], swathKm: 40, radar: true }, // Himage stripmap
+  { id: 'terrasar-x', name: 'TerraSAR-X / PAZ', queries: ['TERRASAR-X', 'TANDEM-X', 'PAZ'], match: /^(terrasar-x|tandem-x|paz)$/, color: [255, 220, 100], swathKm: 30, radar: true },
+  { id: 'rcm', name: 'RADARSAT Constellation', queries: ['RCM'], match: /^rcm-\d+$/, color: [255, 100, 100], swathKm: 350, radar: true }, // medium resolution 50 m
+  { id: 'saocom', name: 'SAOCOM', queries: ['SAOCOM'], match: /^saocom-/, color: [130, 200, 255], swathKm: 320, radar: true }, // TOPSAR wide
+  { id: 'alos', name: 'ALOS', queries: ['ALOS'], match: /^alos-\d/, color: [255, 150, 200], swathKm: 200, radar: true }, // ALOS-4 stripmap (ALOS-2: 50)
+  { id: 'strix', name: 'Synspective StriX', queries: ['STRIX'], match: /^strix-/, color: [150, 255, 180], swathKm: 20, radar: true },
+  { id: 'iqps', name: 'iQPS', queries: ['QPS-SAR'], match: /^qps-sar-/, color: [255, 180, 80], swathKm: 7, radar: true },
+  // Not Earth imagers: communications, navigation, geostationary weather
+  { id: 'oneweb', name: 'OneWeb', queries: ['ONEWEB'], match: /^oneweb-\d+$/, color: [80, 140, 255], swathKm: 0 },
+  { id: 'kuiper', name: 'Amazon Kuiper', queries: ['KUIPER'], match: /^kuiper-/, color: [255, 170, 50], swathKm: 0 },
+  { id: 'qianfan', name: 'Qianfan', queries: ['QIANFAN'], match: /^qianfan-/, color: [255, 80, 80], swathKm: 0 },
+  { id: 'iridium', name: 'Iridium', queries: ['IRIDIUM'], match: /^iridium-\d+$/, color: [120, 200, 255], swathKm: 0 },
+  { id: 'globalstar', name: 'Globalstar', queries: ['GLOBALSTAR'], match: /^globalstar-/, color: [255, 210, 80], swathKm: 0 },
+  { id: 'orbcomm', name: 'ORBCOMM', queries: ['ORBCOMM'], match: /^orbcomm-/, color: [160, 230, 120], swathKm: 0 },
+  { id: 'spire', name: 'Spire', queries: ['LEMUR'], match: /^lemur-/, color: [200, 160, 255], swathKm: 0 },
+  { id: 'gps', name: 'GPS', queries: ['NAVSTAR'], match: /^navstar-/, color: [90, 200, 120], swathKm: 0 },
+  { id: 'galileo', name: 'Galileo', queries: ['GALILEO'], match: /galileo/, color: [80, 130, 255], swathKm: 0 },
+  { id: 'glonass', name: 'GLONASS', queries: ['GLONASS'], match: /glonass/, color: [240, 90, 90], swathKm: 0 },
+  { id: 'beidou', name: 'BeiDou', queries: ['BEIDOU'], match: /beidou/, color: [255, 190, 60], swathKm: 0 },
+  { id: 'weather-geo', name: 'Geostationary weather', queries: ['GOES', 'HIMAWARI', 'METEOSAT', 'FENGYUN 4', 'GEO-KOMPSAT', 'INSAT-3D', 'ELEKTRO-L'],
+    match: /goes|himawari|meteosat|fengyun-4|geo-kompsat|insat-3d|elektro-l/, color: [120, 220, 255], swathKm: 0 }
 ];
 export const constellationOf = (satelliteId: string | null) =>
-  CONSTELLATIONS.find(g => satelliteId !== null && g.members.includes(satelliteId));
+  CONSTELLATIONS.find(g => satelliteId !== null && g.match.test(satelliteId));

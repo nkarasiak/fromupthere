@@ -91,6 +91,7 @@ export class DeckSatelliteTracker {
   private constellationColor: [number, number, number] = [0, 214, 255];
   private constellationSwathKm = 0;
   private constellationRadar = false; // radar images day and night: no daylight cut on its swaths
+  private constellationOrbitR = 1; // highest member's orbit radius, in Earth radii
   private constellationName = '';
   // Constellation time-lapse. The camera is fixed in INERTIAL space (looking along the orbit normal), so the Earth visibly
   // turns under the orbit ring while satellites run round it and paint their ground tracks / swaths onto the surface.
@@ -497,6 +498,7 @@ export class DeckSatelliteTracker {
     document.getElementById('utc-label')!.textContent = 'UTC';
     document.getElementById('utc-clock')!.textContent = new Date().toISOString().slice(11, 19);
     this.nightTimeSetter?.(null); // day/night back to real time
+    (this.map as any).transform.clearNearFarZOverride?.();
     document.getElementById('deck-canvas')!.style.visibility = '';
     if (this.constellationOverlay) this.applyGlobeLayers();
   }
@@ -504,9 +506,9 @@ export class DeckSatelliteTracker {
   // Show every satellite of a constellation at once: real altitude, real orbit rings, whole orbit in view, and a
   // time-lapse (Earth turning, ground tracks and swaths painted) that shows how the constellation covers the planet.
   async showConstellation(group: Constellation, pitch = 0): Promise<boolean> {
-    const configs = await this.satelliteDataFetcher.fetchGroup(group.query, group.members);
+    const configs = await this.satelliteDataFetcher.fetchGroup(group);
     const ids = configs.filter(c => this.addSatelliteFromConfig(c)).map(c => c.id);
-    console.log(`🌐 Constellation "${group.id}": ${ids.length}/${group.members.length} satellites`);
+    console.log(`🌐 Constellation "${group.id}": ${ids.length} satellites`);
     if (ids.length === 0) {
       this.showMessage(`Could not load the ${group.name} constellation`, 'error');
       return false;
@@ -533,11 +535,13 @@ export class DeckSatelliteTracker {
     const gmst = satellite.gstime(nowDate);
     const normals: number[][] = [];
     let orbitR = 1; // the highest satellite's distance from the Earth's centre, in Earth radii
+    this.constellationOrbitR = 1;
     for (const s of sats) {
       const pv = satellite.propagate(satellite.twoline2satrec(s.tle1, s.tle2), nowDate);
       if (!pv || typeof pv.position === 'boolean' || typeof pv.velocity === 'boolean') continue;
       const { position: r, velocity: v } = pv;
       orbitR = Math.max(orbitR, Math.hypot(r.x, r.y, r.z) / 6371);
+      this.constellationOrbitR = orbitR;
       const hx = r.y * v.z - r.z * v.y, hy = r.z * v.x - r.x * v.z, hz = r.x * v.y - r.y * v.x; // orbit normal (ECI)
       const m = Math.hypot(hx, hy, hz);
       const e = satellite.eciToEcf({ x: hx / m, y: hy / m, z: hz / m }, gmst); // -> Earth-fixed, the map's frame
@@ -551,20 +555,27 @@ export class DeckSatelliteTracker {
       const ref = normals.reduce((p, q) => (sharing(q).length > sharing(p).length ? q : p));
       const sum = sharing(ref).reduce((acc, q) => [acc[0] + q[0], acc[1] + q[1], acc[2] + q[2]], [0, 0, 0]);
       const n = sum.map(c => c / Math.hypot(...sum));
-      // View direction: the sun projected into the orbit plane, the daylit side where these imaging satellites work
       const sun = SolarCalculator.sunPoint(nowDate);
-      const sv = [Math.cos(sun.lat * rad) * Math.cos(sun.lng * rad), Math.cos(sun.lat * rad) * Math.sin(sun.lng * rad), Math.sin(sun.lat * rad)];
-      let u = sv.map((c, i) => c - dot(sv, n) * n[i]); // sun direction projected into the orbit plane
-      if (Math.hypot(...u) < 1e-3) u = Math.abs(n[2]) < 0.9 ? [-n[1], n[0], 0] : [1, 0, 0]; // sun along the axis
-      u = u.map(c => c / Math.hypot(...u));
-      lat0 = Math.asin(u[2]) / rad;
-      lng0 = Math.atan2(u[1], u[0]) / rad;
-      // Turn the view so the ground track (n x u, along the orbit at the centre) points straight up
-      const ax = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
-      const north = [-Math.sin(lat0 * rad) * Math.cos(lng0 * rad), -Math.sin(lat0 * rad) * Math.sin(lng0 * rad), Math.cos(lat0 * rad)];
-      const east = [-Math.sin(lng0 * rad), Math.cos(lng0 * rad), 0];
-      bearing = Math.atan2(dot(ax, east), dot(ax, north)) / rad;
-      if (bearing > 90) bearing -= 180; else if (bearing < -90) bearing += 180; // keep north roughly up
+      if (!group.swathKm) { // not an imager, no ground track to line up: look at the plane face-on, tilted to 30 deg at most
+        // (MapLibre can't zoom out enough over a pole, and doesn't draw the poles), so a geostationary belt is a ring around the Earth, not a line
+        const m = n[2] < 0 ? n.map(c => -c) : n;
+        lat0 = Math.min(30, Math.asin(m[2]) / rad);
+        lng0 = Math.hypot(m[0], m[1]) < 0.05 ? sun.lng : Math.atan2(m[1], m[0]) / rad;
+      } else {
+        // View direction: the sun projected into the orbit plane, the daylit side where these imaging satellites work
+        const sv = [Math.cos(sun.lat * rad) * Math.cos(sun.lng * rad), Math.cos(sun.lat * rad) * Math.sin(sun.lng * rad), Math.sin(sun.lat * rad)];
+        let u = sv.map((c, i) => c - dot(sv, n) * n[i]); // sun direction projected into the orbit plane
+        if (Math.hypot(...u) < 1e-3) u = Math.abs(n[2]) < 0.9 ? [-n[1], n[0], 0] : [1, 0, 0]; // sun along the axis
+        u = u.map(c => c / Math.hypot(...u));
+        lat0 = Math.asin(u[2]) / rad;
+        lng0 = Math.atan2(u[1], u[0]) / rad;
+        // Turn the view so the ground track (n x u, along the orbit at the centre) points straight up
+        const ax = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+        const north = [-Math.sin(lat0 * rad) * Math.cos(lng0 * rad), -Math.sin(lat0 * rad) * Math.sin(lng0 * rad), Math.cos(lat0 * rad)];
+        const east = [-Math.sin(lng0 * rad), Math.cos(lng0 * rad), 0];
+        bearing = Math.atan2(dot(ax, east), dot(ax, north)) / rad;
+        if (bearing > 90) bearing -= 180; else if (bearing < -90) bearing += 180; // keep north roughly up
+      }
     } else { // no usable orbit: fall back to the mean position
       lat0 = sats.reduce((a, s) => a + s.position.lat, 0) / sats.length;
       lng0 = sats[0].position.lng;
@@ -575,10 +586,12 @@ export class DeckSatelliteTracker {
     // D = 1.5 h (MapLibre's 36.87 deg field of view) shows a disc of r = D R / sqrt((D + R)^2 - R^2). Solve for R.
     const r = Math.min(h - 240, w - 80) / 2; // with a margin of space around the globe
     const D = 1.5 * h;
-    // Above low orbit (navigation 3.2, geostationary 6.6 Earth radii) it's the orbits that must fit, not the globe
-    const R = (r * r + r * Math.hypot(r, D)) / D / Math.max(1, orbitR / 1.15); // globe radius in px at the centre of the screen
+    // Higher orbits (navigation 3.2, geostationary 6.6 Earth radii) must fit too: a satellite orbitR R off the axis, level
+    // with the globe's centre (D + R from the camera), is orbitR R D / (D + R) px off the screen centre
+    const rOrbit = Math.min(h - 160, w - 40) / 2;
+    const R = Math.min((r * r + r * Math.hypot(r, D)) / D, rOrbit * D / (orbitR * D - rOrbit)); // globe radius in px at the centre of the screen
     // MapLibre's globe radius is 512 * 2^zoom / (2 pi cos(lat)): it draws the globe larger away from the equator
-    const zoom = Math.max(0, Math.min(4, Math.log2((R * 2 * Math.PI * Math.cos(lat0 * rad)) / 512)));
+    const zoom = Math.max(-2, Math.min(4, Math.log2((R * 2 * Math.PI * Math.cos(lat0 * rad)) / 512)));
     this.flightUntil = performance.now() + FLY_DURATION_MS + 200;
     this.map.flyTo({ center: [lng0, lat0], zoom, pitch, bearing, duration: FLY_DURATION_MS, essential: true });
 
@@ -710,6 +723,11 @@ export class DeckSatelliteTracker {
       this.map.jumpTo({ center: [c.lng - d, c.lat] });
     }
     if (!flying) this.nightTimeSetter?.(this.tlSim); // the terminator follows the simulated sun
+    if (this.constellationOrbitR > 1.5) { // MapLibre's far plane, one globe radius behind the Earth, would clip the far side
+      const tr = (this.map as any).transform; // of higher orbits: move it behind them (low orbits keep the default)
+      const globeR = tr.worldSize / (2 * Math.PI * Math.cos(tr.center.lat * Math.PI / 180));
+      tr.overrideNearFarZ?.(0.5, tr.cameraToCenterDistance + globeR * (1 + this.constellationOrbitR) * 1.05);
+    }
 
     // Satellites (and the scan line across each ground track) at the simulated time
     const halfKm = this.constellationSwathKm / 2;
@@ -831,7 +849,8 @@ export class DeckSatelliteTracker {
     }
     // Declutter: nearest first, a label whose box overlaps one already placed fades out (eased: no popping).
     // Satellites hidden by the Earth (alpha 0) take no room.
-    const vp = (this.constellationOverlay as any)?._deck?.getViewports()[0];
+    const deck = (this.constellationOverlay as any)?._deck;
+    const vp = deck?.viewManager && deck.getViewports()[0]; // none until the overlay has drawn once
     if (vp) {
       const placed: number[][] = [];
       for (const d of [...dots].sort((a, b) => a.dist - b.dist)) {
