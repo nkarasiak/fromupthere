@@ -176,10 +176,10 @@ export const resolveSatelliteId = (slug: string): string =>
 // Constellations viewable together (?group=<id>). `query` is ONE Celestrak name search that returns all members.
 export interface Constellation { id: string; name: string; query: string; members: string[]; color: [number, number, number]; swathKm: number }
 export const CONSTELLATIONS: Constellation[] = [
-  { id: 'edc', name: 'EarthDaily', query: 'YAM-', members: Array.from({ length: 8 }, (_, i) => `yam-${10 + i}`), color: [0, 214, 255], swathKm: 240 }, // EarthDaily docs: 240 km swath
   { id: 'sentinel-2', name: 'Sentinel-2', query: 'SENTINEL-2', members: ['sentinel-2a', 'sentinel-2b', 'sentinel-2c'], color: [90, 150, 255], swathKm: 290 }, // MSI nominal swath
   { id: 'sentinel-1', name: 'Sentinel-1', query: 'SENTINEL-1', members: ['sentinel-1a', 'sentinel-1c', 'sentinel-1d'], color: [170, 130, 255], swathKm: 250 }, // 1B was lost in 2021; IW mode swath
-  { id: 'landsat', name: 'Landsat', query: 'LANDSAT', members: ['landsat-8', 'landsat-9'], color: [255, 176, 64], swathKm: 185 }
+  { id: 'landsat', name: 'Landsat', query: 'LANDSAT', members: ['landsat-8', 'landsat-9'], color: [255, 176, 64], swathKm: 185 },
+  { id: 'edc', name: 'EarthDaily', query: 'YAM-', members: Array.from({ length: 8 }, (_, i) => `yam-${10 + i}`), color: [0, 214, 255], swathKm: 240 } // EarthDaily docs: 240 km swath
 ];
 export const constellationOf = (satelliteId: string | null) =>
   CONSTELLATIONS.find(g => satelliteId !== null && g.members.includes(satelliteId));

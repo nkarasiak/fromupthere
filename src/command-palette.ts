@@ -28,6 +28,7 @@ export class CommandPalette {
   private getSatelliteConfigs?: () => Array<{ id: string; name?: string; shortname?: string; alternateName?: string }>;
   private searchRemote?: (query: string) => Promise<Array<{ id: string; name: string }>>;
   private getConstellations?: () => Array<{ id: string; name: string }>;
+  private dbLoad?: Promise<void>; // catalogue download in flight
   private remoteTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
@@ -85,9 +86,11 @@ export class CommandPalette {
       });
     }
     
-    // Sort alphabetically for better UX
+    // Alphabetical, after the ISS (the default view, preselected) and the constellations
     this.satelliteResults.sort((a, b) => a.name.localeCompare(b.name));
-    this.satelliteResults.unshift(...(this.getConstellations?.() ?? [])); // constellations first
+    const iss = this.satelliteResults.findIndex(s => s.id === 'iss-zarya');
+    const top = iss >= 0 ? this.satelliteResults.splice(iss, 1) : [];
+    this.satelliteResults.unshift(...top, ...(this.getConstellations?.() ?? []));
     
     // Initially show all satellites
     this.filteredSatellites = [...this.satelliteResults];
@@ -291,17 +294,17 @@ export class CommandPalette {
     this.palette.classList.add('active');
     this.input.value = '';
     
-    // Load search database if available
-    if (this.loadSearchDatabase) {
-      try {
-        await this.loadSearchDatabase();
-      } catch (error) {
-        console.warn('Failed to load search database in command palette:', error);
-      }
-    }
-    
-    // Refresh satellite list to get latest data
+    // List what we have now; the full catalogue (seconds to download) fills in when it arrives
     this.refreshSatelliteList();
+    this.dbLoad ??= this.loadSearchDatabase?.()
+      .then(() => {
+        if (!this.isOpen) return;
+        this.refreshSatelliteList();
+        if (this.input.value.trim()) this.handleInput(); // re-filter what the user typed meanwhile
+        else { this.filteredSatellites = [...this.satelliteResults]; this.renderSatelliteResults(); }
+      })
+      .catch(error => console.warn('Failed to load search database in command palette:', error))
+      .finally(() => { this.dbLoad = undefined; });
     
     // Prevent canvas from stealing focus
     const canvas = document.getElementById('deck-canvas') as HTMLCanvasElement;
