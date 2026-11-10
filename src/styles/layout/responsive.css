@@ -1,4 +1,10 @@
 /* Responsive Top Banner Layout */
+@media (max-width: 1024px) {
+  .banner-extra {
+    display: none;
+  }
+}
+
 @media (max-width: 768px) {
   #banner-display {
     gap: 20px;

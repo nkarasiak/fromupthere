@@ -68,3 +68,6 @@ export interface SatellitePosition {
   altitude: number;
   velocity: number;
 }
+/** Human-readable name: configs without a `name` fall back to their slug id (e.g. "iss-zarya"). */
+export const displayName = (s: Pick<SatelliteData, 'id' | 'name' | 'shortname' | 'alternateName'>): string =>
+  s.shortname || s.alternateName || (s.name === s.id ? s.id.toUpperCase() : s.name);

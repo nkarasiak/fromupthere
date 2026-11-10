@@ -7,6 +7,7 @@ import { installNightShading } from './night-layer';
 import { CONSTELLATIONS, Constellation, constellationOf } from './config/satellites';
 import { SearchComponent } from './components/search.component';
 import { CockpitComponent } from './components/cockpit.component';
+import { displayName } from './types/satellite';
 import { SEOManager } from './seo-manager';
 
 class SatelliteTracker3D {
@@ -61,7 +62,9 @@ class SatelliteTracker3D {
       style: {
         version: 8,
         sources: {},
-        layers: []
+        layers: [],
+        // Thin limb glow + haze seen from orbit; fades out as we zoom toward the ground. Lit by the real sun (night-layer.ts).
+        sky: { 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.45, 6, 0.3, 9, 0] }
       },
       center: initialCenter,
       zoom: initialSatellite ? 4 : this.initialZoom, // Start at safe zoom level to avoid terrain tile errors
@@ -129,11 +132,30 @@ class SatelliteTracker3D {
       });
     }
     
+    // Low-res underlay (<= 16 tiles for the whole Earth, same URLs so they share the HTTP cache): the globe is never
+    // black and the sharp tiles fade in over a blurry Earth instead of popping in square by square.
+    if (!this.map.getSource('esri-world-imagery-lowres')) {
+      this.map.addSource('esri-world-imagery-lowres', {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        maxzoom: 2
+      });
+      this.map.addLayer({
+        id: 'esri-world-imagery-lowres',
+        type: 'raster',
+        source: 'esri-world-imagery-lowres',
+        paint: { 'raster-saturation': -0.25, 'raster-contrast': 0.1 }
+      }, this.getFirstSatelliteLayerId());
+    }
+
     if (!this.map.getLayer('esri-world-imagery')) {
       this.map.addLayer({
         id: 'esri-world-imagery',
         type: 'raster',
-        source: 'esri-world-imagery'
+        source: 'esri-world-imagery',
+        // Esri's low-zoom bathymetry is a saturated teal; pull it toward the deep navy seen from orbit
+        paint: { 'raster-saturation': -0.25, 'raster-contrast': 0.1, 'raster-fade-duration': 600 }
       }, this.getFirstSatelliteLayerId());
     }
   }
@@ -161,34 +183,19 @@ class SatelliteTracker3D {
         encoding: 'terrarium' // Terrarium encoding format
       });
 
-      // Only enable terrain if we're at a safe zoom level
-      const currentZoom = this.map.getZoom();
-      if (currentZoom >= 4) {
+      // From orbit, true-scale relief is invisible and globe terrain draws lighter/darker tile patches over the
+      // ocean; switch it on only once the camera is close enough to see mountains.
+      const syncTerrain = () => {
+        const want = this.map.getZoom() >= 8;
+        if (want === !!this.map.getTerrain()) return;
         try {
-          this.map.setTerrain({
-            source: 'terrain',
-            exaggeration: 3 // Exaggerate elevation by 3x for dramatic effect from satellite view
-          });
+          this.map.setTerrain(want ? { source: 'terrain', exaggeration: 1 } : null);
         } catch (error) {
-          console.warn('Failed to set terrain immediately, will retry on zoom:', error);
+          console.warn('Failed to toggle terrain:', error);
         }
-      } else {
-        // Wait for zoom to reach safe level before enabling terrain
-        const onZoomEnd = () => {
-          if (this.map.getZoom() >= 4) {
-            this.map.off('zoomend', onZoomEnd);
-            try {
-              this.map.setTerrain({
-                source: 'terrain',
-                exaggeration: 3
-              });
-            } catch (error) {
-              console.warn('Failed to set terrain on zoom end:', error);
-            }
-          }
-        };
-        this.map.on('zoomend', onZoomEnd);
-      }
+      };
+      syncTerrain();
+      this.map.on('zoomend', syncTerrain);
 
       // Apply pitch override after terrain is added
       setTimeout(() => {
@@ -250,34 +257,7 @@ class SatelliteTracker3D {
 
   private showMessage(message: string, type: 'success' | 'error' | 'warning' | 'info') {
     const messageDiv = document.createElement('div');
-    messageDiv.style.cssText = `
-      position: fixed;
-      top: 200px;
-      right: 20px;
-      z-index: 2000;
-      padding: 10px 15px;
-      border-radius: 6px;
-      color: white;
-      font-weight: bold;
-      font-size: 14px;
-      font-family: Arial, sans-serif;
-    `;
-    
-    switch (type) {
-      case 'success':
-        messageDiv.style.backgroundColor = 'rgba(0, 255, 0, 0.8)';
-        break;
-      case 'error':
-        messageDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
-        break;
-      case 'warning':
-        messageDiv.style.backgroundColor = 'rgba(255, 165, 0, 0.8)';
-        break;
-      case 'info':
-        messageDiv.style.backgroundColor = 'rgba(0, 150, 255, 0.8)';
-        break;
-    }
-    
+    messageDiv.className = `toast toast-${type}`;
     messageDiv.textContent = message;
     document.body.appendChild(messageDiv);
     
@@ -519,10 +499,8 @@ class SatelliteTracker3D {
       }
       
       this.updateUI();
-      setInterval(() => {
-        this.updateUI();
-        this.updateBasemapForSatellite(); // Check for day/night changes
-      }, 5000);
+      setInterval(() => this.updateUI(), 1000); // HUD readouts: the ISS covers ~8 km every second
+      setInterval(() => this.updateBasemapForSatellite(), 5000); // Check for day/night changes
     });
   }
 
@@ -757,6 +735,7 @@ class SatelliteTracker3D {
     const trackedAltitudeElement = document.getElementById('tracked-altitude');
     const trackedNameElement = document.getElementById('tracked-name');
     const trackedSpeedElement = document.getElementById('tracked-speed');
+    const trackedPositionElement = document.getElementById('tracked-position');
     
     // Update search component with current following satellite
     this.searchComponent?.setFollowingSatellite(followingSatellite);
@@ -769,7 +748,7 @@ class SatelliteTracker3D {
         const trackedSatellite = satellites.get(followingSatellite);
         if (trackedSatellite) {
           // Update search input with current satellite name only when satellite changes
-          this.searchComponent?.updateSearchInput(trackedSatellite.shortname || trackedSatellite.name);
+          this.searchComponent?.updateSearchInput(displayName(trackedSatellite));
         }
       } else {
         // Clear search input only when stopping tracking
@@ -782,19 +761,23 @@ class SatelliteTracker3D {
       const trackedSatellite = satellites.get(followingSatellite);
       if (trackedSatellite) {
         if (trackedAltitudeElement) trackedAltitudeElement.textContent = trackedSatellite.altitude.toFixed(0);
-        if (trackedNameElement) trackedNameElement.textContent = trackedSatellite.shortname || trackedSatellite.name;
+        if (trackedNameElement) trackedNameElement.textContent = displayName(trackedSatellite);
         if (trackedSpeedElement) trackedSpeedElement.textContent = trackedSatellite.velocity.toFixed(2);
-        
-        // Log local time at satellite position
+        if (trackedPositionElement) trackedPositionElement.textContent = formatLatLng(trackedSatellite.position.lat, trackedSatellite.position.lng);
       }
     } else {
       // No satellite being tracked - show defaults
       if (trackedAltitudeElement) trackedAltitudeElement.textContent = '---';
       if (trackedNameElement) trackedNameElement.textContent = '---';
       if (trackedSpeedElement) trackedSpeedElement.textContent = '---';
+      if (trackedPositionElement) trackedPositionElement.textContent = '---';
     }
-    
+    const utcClock = document.getElementById('utc-clock');
+    if (utcClock) utcClock.textContent = new Date().toISOString().slice(11, 19);
   }
 }
 
 new SatelliteTracker3D();
+
+const formatLatLng = (lat: number, lng: number) =>
+  `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`;

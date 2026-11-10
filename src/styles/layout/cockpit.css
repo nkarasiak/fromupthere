@@ -133,15 +133,54 @@
 .tracking-name {
   color: #00d4ff;
   font-weight: 600;
-  max-width: 200px;
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Icon Styling */
-.banner-icon {
-  font-size: 14px;
-  opacity: 0.8;
+/* Live-tracking indicator */
+.tracking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3ddc84;
+  box-shadow: 0 0 6px #3ddc84;
+  animation: tracking-pulse 2s ease-in-out infinite;
 }
 
+@keyframes tracking-pulse {
+  50% { opacity: 0.35; }
+}
+
+/* Readouts: fixed-width digits so values don't jitter as they tick */
+.banner-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+/* Transient status messages */
+.toast {
+  position: fixed;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  padding: 8px 14px;
+  font: 500 13px/1.2 'Inter', sans-serif;
+  color: #fff;
+  background: rgba(10, 14, 20, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 3px solid var(--toast-accent, #00d4ff);
+  border-radius: 6px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: toast-in 0.25s ease-out, toast-out 0.4s ease-in 2.6s forwards;
+  pointer-events: none;
+}
+.toast-success { --toast-accent: #3ddc84; }
+.toast-error { --toast-accent: #ff5a5a; }
+.toast-warning { --toast-accent: #ffb020; }
+
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -6px); } }
+@keyframes toast-out { to { opacity: 0; } }

@@ -59,4 +59,5 @@
 }
 #timelapse button:hover, #timelapse select:hover { background: rgba(0, 214, 255, 0.25); }
 #timelapse select option { color: #000; }
+#timelapse button.on { background: rgba(0, 214, 255, 0.35); border-color: rgba(0, 214, 255, 0.8); }
 #tl-clock { min-width: 150px; opacity: 0.85; font-variant-numeric: tabular-nums; }

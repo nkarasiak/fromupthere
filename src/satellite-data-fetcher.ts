@@ -175,6 +175,8 @@ export class SatelliteDataFetcher {
       const expiry = now + 6 * 60 * 60 * 1000;
       this.cache.set(key, found);
       this.cacheExpiry.set(key, expiry);
+      // persisted: Celestrak answers 403 to the same query again within 2h, which made every constellation reload fail
+      if (found.length) this.saveCacheToStorage(key, found, expiry);
       // so that selecting a result doesn't need a second request
       for (const t of found) { this.cache.set(`slug:${t.id}`, [t]); this.cacheExpiry.set(`slug:${t.id}`, expiry); }
       return found;
