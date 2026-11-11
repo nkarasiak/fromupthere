@@ -654,8 +654,8 @@ export class DeckSatelliteTracker {
       <div class="banner-item banner-extra" id="tl-date-item" title="Set the date and time"><span class="banner-label">Date</span><span class="banner-value" id="tl-date"></span></div>
       <div class="banner-separator banner-extra"></div>`));
     bar.querySelector('.banner-right')!.append(...slots(`
-      <div class="banner-separator banner-extra"></div>
-      <div class="banner-item banner-extra"><span class="banner-label">Sats</span><span class="banner-value">${this.constellation?.length ?? 0}</span></div>
+      <div class="banner-item banner-extra"><span class="banner-label">Sats</span><span class="banner-value">${this.constellation?.length ?? 0}</span></div>`));
+    document.getElementById('utc-item')!.after(...slots(` // the speed next to the clock it drives
       <div class="banner-separator"></div>
       <div class="banner-item" id="timelapse"><span class="banner-label">Speed</span>
         <button id="tl-play" title="Pause / play" aria-label="Pause">${icon(this.tlPlaying)}</button>
@@ -2261,7 +2261,7 @@ export class DeckSatelliteTracker {
       <div class="banner-item tl-slot" id="timelapse"><span class="banner-label">Speed</span>
         <button id="tl-speed"></button>
         <button id="tl-reset" title="Back to live" aria-label="Back to live">⟲</button></div>`;
-    document.querySelector('#banner-display .banner-right')!.append(...Array.from(t.content.children));
+    document.getElementById('utc-item')!.after(...Array.from(t.content.children)); // next to the clock it drives
     const speed = document.getElementById('tl-speed')!;
     const next = () => SPEEDS[(SPEEDS.indexOf(this.trackSpeed) + 1) % SPEEDS.length];
     const show = () => {

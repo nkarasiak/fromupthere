@@ -69,7 +69,7 @@
   justify-content: center;
   width: 100%;
   max-width: 1200px;
-  gap: 40px;
+  gap: 28px;
   font-size: 13px;
   color: #ffffff;
 }
@@ -123,6 +123,7 @@
 
 /* Banner Separator */
 .banner-separator {
+  flex-shrink: 0; /* a crowded half would squeeze it to nothing */
   width: 1px;
   height: 20px;
   background: rgba(255, 255, 255, 0.2);
