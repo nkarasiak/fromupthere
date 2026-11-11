@@ -126,7 +126,7 @@
 .command-hint {
   position: fixed;
   bottom: 20px;
-  right: 20px;
+  left: 50%; /* centred: the bottom-right corner holds the map credits */
   background: rgba(0, 0, 0, 0.9);
   color: rgba(255, 255, 255, 0.7);
   padding: 8px 12px;
@@ -137,10 +137,10 @@
   z-index: 1000;
   transition: all 0.3s ease;
   opacity: 0;
-  transform: translateY(10px);
+  transform: translate(-50%, 10px);
 }
 
 .command-hint.show {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate(-50%, 0);
 }
