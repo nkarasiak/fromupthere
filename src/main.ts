@@ -1,16 +1,18 @@
 import { Map as MapLibreMap, AttributionControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { DeckSatelliteTracker } from './deck-satellite-tracker';
-import { globeZoomShift } from './smooth-camera';
 import { URLState } from './url-state';
 import { CommandPalette } from './command-palette';
 import { installNightShading } from './night-layer';
-import { installSettings } from './settings';
+import { ESRI_TILES } from './tile-prefetch';
+import { installSettings, settings } from './settings';
 import { CONSTELLATIONS, Constellation, constellationOf } from './config/satellites';
 import { SearchComponent } from './components/search.component';
 import { CockpitComponent } from './components/cockpit.component';
 import { displayName } from './types/satellite';
 import { SEOManager } from './seo-manager';
+
+const UNIFORM_TILES_DIST = 3; // see addDayBasemap
 
 class SatelliteTracker3D {
   private map!: MapLibreMap;
@@ -23,7 +25,7 @@ class SatelliteTracker3D {
   private _cockpitComponent!: CockpitComponent;
   private initialZoom!: number;
   private isInitializing = true;
-  private lastURLState = { zoom: 0, pitch: 0, bearing: 0, satellite: '' }; // Track URL-relevant changes
+  private lastURLState = {}; // what the URL keeps, to skip unchanged updates
   private lastFollowingSatellite: string | null = null; // Track when satellite changes
 
   constructor() {
@@ -32,6 +34,7 @@ class SatelliteTracker3D {
     this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateConstellationSlot(); });
     installSettings();
     this.installTimePicker();
+    this.installShowGroup();
     this.satelliteTracker.setOnSatellitesLoadedCallback(() => {
       // Refresh command palette when satellites are loaded
       this.commandPalette?.refreshSatelliteList();
@@ -51,7 +54,7 @@ class SatelliteTracker3D {
     // Get initial view from URL parameters (zoom, pitch, bearing, and satellite tracking)
     this.initialZoom = this.urlState.getInitialZoom();
     const initialPitch = this.urlState.getInitialPitch();
-    const initialBearing = this.urlState.getInitialBearing();
+    const initialBearing = this.urlState.getNumber('bearing') ?? 0;
     const initialCoordinates = this.urlState.getInitialCoordinates();
     const initialSatellite = this.urlState.getInitialSatellite();
     
@@ -125,12 +128,19 @@ class SatelliteTracker3D {
     if (!this.map.getSource('esri-world-imagery')) {
       this.map.addSource('esri-world-imagery', {
         type: 'raster',
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-        tileSize: 256,
+        tiles: [ESRI_TILES],
+        // Declared 128 px (they're 256): MapLibre asks a level more detailed, so when the camera climbs and it drops a level,
+        // the coarser tiles still match the screen's resolution instead of turning visibly blurry. ~4x the requests.
+        tileSize: 128,
         minzoom: 1,
         maxzoom: 19,
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
       });
+      // Esri's levels differ in colour (each is built from other imagery), so a pitched view mixing two or three of them
+      // showed patches. One level, the centre's, up to UNIFORM_TILES_DIST x the distance to the centre; lower only beyond,
+      // toward the horizon (all one level to it would be thousands of tiles with the camera low)
+      (this.map.getSource('esri-world-imagery') as any).calculateTileZoom = (centerZoom: number, d2: number, dz: number, dCenter: number) =>
+        centerZoom + Math.min(0, Math.log2(UNIFORM_TILES_DIST * dCenter / Math.hypot(d2, dz)));
     }
     
     // Low-res underlay (<= 16 tiles for the whole Earth, same URLs so they share the HTTP cache): the globe is never
@@ -138,7 +148,7 @@ class SatelliteTracker3D {
     if (!this.map.getSource('esri-world-imagery-lowres')) {
       this.map.addSource('esri-world-imagery-lowres', {
         type: 'raster',
-        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tiles: [ESRI_TILES],
         tileSize: 256,
         maxzoom: 2
       });
@@ -238,16 +248,42 @@ class SatelliteTracker3D {
     }
   }
 
+  // Tilt the view by `deg`: while tracking, the camera's point of view on the satellite (it can go below it)
+  private tilt(deg: number) {
+    const cam = this.satelliteTracker.getSmoothCamera();
+    if (cam.isTracking()) cam.pov = Math.min(180, Math.max(0, cam.pov + deg));
+    else this.map.setPitch(Math.min(85, Math.max(0, this.map.getPitch() + deg)));
+  }
+
+  // Turn the view by `deg`: while tracking, the camera keeps that bearing (manual) until B
+  private turn(deg: number) {
+    const smoothCamera = this.satelliteTracker.getSmoothCamera();
+    if (!this.satelliteTracker.getFollowingSatellite()) {
+      this.map.setBearing(this.map.getBearing() + deg);
+      return;
+    }
+    const newBearing = (smoothCamera.heading + deg) % 360; // the camera's bearing at the satellite
+    if (!smoothCamera.isUserControlledBearing()) {
+      smoothCamera.setUserControlledBearing(true, newBearing);
+      this.showMessage('🧭 Manual bearing control active (Press B to reset)', 'info');
+    } else {
+      smoothCamera.updateUserBearing(newBearing);
+    }
+    this.map.setBearing(newBearing);
+  }
+
   private resetBearingToAutomatic() {
     const followingSatellite = this.satelliteTracker.getFollowingSatellite();
     if (followingSatellite) {
       const smoothCamera = this.satelliteTracker.getSmoothCamera();
       smoothCamera.setUserControlledBearing(false);
       this.showMessage('🧭 Bearing reset to automatic', 'info');
+      this.updateURL();
     }
   }
 
   private showMessage(message: string, type: 'success' | 'error' | 'warning' | 'info') {
+    document.querySelectorAll('.toast').forEach(t => t.remove()); // the newest replaces the last: they'd overlap
     const messageDiv = document.createElement('div');
     messageDiv.className = `toast toast-${type}`;
     messageDiv.textContent = message;
@@ -306,6 +342,22 @@ class SatelliteTracker3D {
           this.resetBearingToAutomatic();
         }
       }
+
+      // Left / right: the previous / next satellite of the tracked one's constellation (EDC-01 ... EDC-08, around)
+      const id = this.satelliteTracker.getFollowingSatellite(), group = constellationOf(id);
+      if (!e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && id && group) {
+        e.preventDefault();
+        this.stepSatellite(id, group, e.key === 'ArrowRight' ? 1 : -1);
+      }
+
+      // Ctrl + arrows move the point of view (held down, they repeat): up/down climbs above the satellite or comes down
+      // level with it (the pitch), left/right turns around it
+      const step = (e.ctrlKey || e.metaKey) && { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -2], ArrowRight: [0, 2] }[e.key];
+      if (step) {
+        e.preventDefault();
+        if (step[0]) this.tilt(step[0]);
+        if (step[1]) this.turn(step[1]);
+      }
     });
     
     
@@ -324,9 +376,8 @@ class SatelliteTracker3D {
         return;
       }
 
-      // Restore satellite tracking from URL if specified, otherwise default to ISS
-      const satelliteToTrack = this.urlState.getInitialSatellite() || 'iss-zarya';
-      const isDefaultISS = !this.urlState.getInitialSatellite(); // True if we're defaulting to ISS
+      // The landing page: EDC-07 (YAM-16), with the rest of EarthDaily's constellation imaging around it
+      const satelliteToTrack = this.urlState.getInitialSatellite() ?? 'yam-16';
       
       // Enable external satellite loading for search functionality
       this.satelliteTracker.enableExternalSatelliteLoading();
@@ -350,28 +401,16 @@ class SatelliteTracker3D {
           
           // Start satellite tracking immediately
           setTimeout(() => {
-            const zoomToUse = isDefaultISS ? 4.7 : this.initialZoom;
-            const pitchToUse = isDefaultISS ? 62 : this.urlState.getInitialPitch();
-            
-            
             const satellite = this.satelliteTracker.getSatellites().get(satelliteToTrack);
-            
-            // Use satellite-specific zoom and pitch if available
-            const finalZoomToUse = satellite?.defaultZoom ?? zoomToUse;
-            const finalPitchToUse = satellite?.defaultPitch ?? pitchToUse;
-            
-            console.log(`🎯 Tracking satellite "${satelliteToTrack}" with:`, {
-              zoom: finalZoomToUse,
-              pitch: finalPitchToUse,
-              altitude: satellite?.altitude,
-              position: satellite?.position ? `${satellite.position.lat.toFixed(2)}, ${satellite.position.lng.toFixed(2)}` : 'undefined'
-            });
-            
+            // The URL's view wins (a shared link), then the satellite's own defaults
+            const url = (key: string) => this.urlState.getNumber(key);
             if (satellite && satellite.position) {
               this.satelliteTracker.followSatelliteWithAnimation(
-                satelliteToTrack, 
-                finalZoomToUse,
-                finalPitchToUse
+                satelliteToTrack,
+                url('zoom') ?? satellite.defaultZoom ?? 4.7,
+                url('pitch') ?? satellite.defaultPitch ?? 62,
+                url('bearing'),
+                url('speed')
               );
             } else {
               console.warn(`⚠️ Satellite "${satelliteToTrack}" not found or has no position`);
@@ -400,15 +439,15 @@ class SatelliteTracker3D {
             
             // Satellites will be loaded on-demand when searching
             
-            const zoomToUse = this.initialZoom;
-            const pitchToUse = this.urlState.getInitialPitch();
-            
             // Track the satellite immediately
             setTimeout(() => {
-              this.satelliteTracker.followSatelliteWithAnimation(
-                satelliteToTrack, 
-                zoomToUse,
-                pitchToUse
+              const satellite = this.satelliteTracker.getSatellites().get(satelliteToTrack);
+              this.satelliteTracker.followSatelliteWithAnimation( // as above: the URL's view, then the satellite's defaults
+                satelliteToTrack,
+                this.urlState.getNumber('zoom') ?? satellite?.defaultZoom ?? 4.7,
+                this.urlState.getNumber('pitch') ?? satellite?.defaultPitch ?? 62,
+                this.urlState.getNumber('bearing'),
+                this.urlState.getNumber('speed')
               );
             }, 100);
             
@@ -442,12 +481,27 @@ class SatelliteTracker3D {
     });
   }
 
+  private async stepSatellite(id: string, group: Constellation, step: number) {
+    const t = this.satelliteTracker, ids = await t.constellationMembers(group);
+    const name = (k: string) => t.getSatellites().get(k)!.name;
+    ids.sort((a, b) => name(a).localeCompare(name(b), 'en', { numeric: true }));
+    const next = ids[(ids.indexOf(id) + step + ids.length) % ids.length];
+    if (!next || next === id || t.getFollowingSatellite() !== id) return; // alone, or the user moved on meanwhile
+    t.followSatellite(next, true);
+    this.updateSEOForSatellite(next);
+  }
+
   private async openConstellation(group: Constellation, pushUrl = false) {
     this.isInitializing = true;
     this.urlState.setInitializing(true);
     if (pushUrl) this.urlState.navigateToGroup(group.id);
-    if (!(await this.satelliteTracker.showConstellation(group, pushUrl ? 0 : this.urlState.getInitialPitch())) && this.satelliteTracker.loadConfigSatelliteById('iss-zarya')) {
+    const shown = await this.satelliteTracker.showConstellation(group, pushUrl ? 0 : this.urlState.getInitialPitch());
+    if (!shown) this.showMessage(`Could not load the ${group.name} constellation`, 'error');
+    if (!shown && this.satelliteTracker.loadConfigSatelliteById('iss-zarya')) {
       this.satelliteTracker.followSatelliteWithAnimation('iss-zarya', 4.7, 62); // load failed: fall back to the ISS
+    } else if (shown && !pushUrl) {
+      const speed = this.urlState.getNumber('speed');
+      if (speed) this.satelliteTracker.setClockSpeed(speed);
     }
     setTimeout(() => { this.urlState.setInitializing(false); this.isInitializing = false; }, 3500);
     this.updateUI();
@@ -456,6 +510,23 @@ class SatelliteTracker3D {
 
   // Click the clock in the time bar to pick the simulated date and time, in UTC like the clock.
   // A native popover with a datetime-local field: Enter or Go jumps there, Now goes back to the present.
+  // While tracking a constellation's satellite, moving the pointer shows a button back to the whole constellation; it
+  // hides again once the pointer rests (not while it is on the button)
+  private installShowGroup() {
+    const btn = document.getElementById('show-group') as HTMLButtonElement;
+    let idle: ReturnType<typeof setTimeout>;
+    const hide = () => { if (!btn.matches(':hover')) btn.classList.remove('show'); };
+    addEventListener('pointermove', () => {
+      const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
+      btn.classList.toggle('show', !!group);
+      if (!group) return;
+      btn.textContent = `Show the ${group.name} constellation`;
+      btn.onclick = () => { btn.classList.remove('show'); this.openConstellation(group, true); };
+      clearTimeout(idle);
+      idle = setTimeout(hide, 2500);
+    });
+  }
+
   private installTimePicker() {
     const DAY = 24 * 3600e3, RANGE = 30 * DAY; // ponytail: TLEs drift by tens of km a month from their epoch; widen with archived TLEs
     const pop = document.createElement('form');
@@ -492,7 +563,21 @@ class SatelliteTracker3D {
     const parent = document.getElementById('tracked-parent')!, count = document.getElementById('tracked-count')!;
     parent.textContent = count.textContent = '';
     const n = this.satelliteTracker.getConstellationSize();
-    if (n) { count.textContent = `· ${n}`; count.title = `${n} satellite${n > 1 ? 's' : ''}`; return; }
+    const dense = this.satelliteTracker.getConstellationShells(), key = document.getElementById('constellation-key')!;
+    key.hidden = !dense;
+    if (dense) {
+      key.innerHTML = '<span>Each ring is one orbital plane: its satellites follow each other around it.</span><span></span>';
+      key.lastElementChild!.append(...dense.shells.filter(s => s.n >= 20).map(s => { // a handful of strays isn't a shell
+        const item = document.createElement('span'), line = document.createElement('i');
+        line.style.background = `rgb(${s.color})`;
+        item.append(line, `${Math.round(s.inc)}° · ${s.n.toLocaleString('en')}`);
+        return item;
+      }));
+    }
+    if (n) {
+      count.textContent = `· ${n.toLocaleString('en')} satellite${n > 1 ? 's' : ''}${dense ? ` · ${dense.planes} planes` : ''}`;
+      return;
+    }
     const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
     if (!group) return;
     const btn = document.createElement('button');
@@ -512,32 +597,29 @@ class SatelliteTracker3D {
       return;
     }
     
+    if (this.satelliteTracker.getSmoothCamera().onShow()) return; // drifting on its own: the URL keeps where it began
     const followingSatellite = this.satelliteTracker.getFollowingSatellite() || '';
-    // While tracking, the URL keeps the equator-equivalent zoom (the camera shifts it with the latitude)
-    const z = this.map.getZoom() - (followingSatellite ? globeZoomShift(this.map.getCenter().lat) : 0);
+    // While tracking, the URL keeps the camera's zoom around the satellite (the map's own zoom is derived from it)
+    const z = followingSatellite ? this.satelliteTracker.getTrackingZoom() : this.map.getZoom();
     const zoom = Math.round(z * 10) / 10; // Round to 1 decimal
-    const pitch = Math.round(this.map.getPitch());
-    const bearing = Math.round(this.map.getBearing());
-    
-    // Only update URL if values that are actually stored in URL have changed
-    const hasChanged = 
-      Math.abs(zoom - this.lastURLState.zoom) > 0.1 ||
-      Math.abs(pitch - this.lastURLState.pitch) > 1 ||
-      Math.abs(bearing - this.lastURLState.bearing) > 1 ||
-      followingSatellite !== this.lastURLState.satellite;
-    
-    if (!hasChanged) {
-      return; // No URL-relevant changes
-    }
-    
-    // Update stored state
-    this.lastURLState = { zoom, pitch, bearing, satellite: followingSatellite };
-    
-    this.urlState.updateURL(zoom, followingSatellite, pitch, bearing);
+    const pitch = Math.round(followingSatellite ? this.satelliteTracker.getSmoothCamera().pov : this.map.getPitch());
+    // Tracking: 'auto' (the camera turns with the ground track) unless the user turned it, then its heading at the
+    // satellite; elsewhere the map's bearing, left out when north is up
+    const cam = this.satelliteTracker.getSmoothCamera();
+    const deg = (b: number) => String((Math.round(b) % 360 + 360) % 360);
+    const bearing = followingSatellite ? (cam.isUserControlledBearing() ? deg(cam.heading) : 'auto') // swaying: still 'auto'
+      : deg(this.map.getBearing()) === '0' ? null : deg(this.map.getBearing());
+    const speed = this.satelliteTracker.getClockSpeed();
+    const defaultSpeed = this.satelliteTracker.getConstellationName() ? settings.speed : 1;
+    const state = { zoom, pitch, bearing, speed: speed === defaultSpeed ? null : String(speed), satellite: followingSatellite };
+    if (JSON.stringify(state) === JSON.stringify(this.lastURLState)) return; // nothing the URL keeps has changed
+    this.lastURLState = state;
+    this.urlState.updateURL(zoom, followingSatellite, followingSatellite || pitch >= 1 ? String(pitch) : null, state.bearing, state.speed);
   }
 
   private setupURLSharing() {
     this.urlState.setupURLSharing(this.map, () => this.updateURL());
+    document.getElementById('tl-speed')!.addEventListener('click', () => this.updateURL()); // the camera may not move
   }
 
   private setupCommandPalette() {
@@ -668,27 +750,9 @@ class SatelliteTracker3D {
         const deltaY = lastY - e.clientY;
         const deltaX = e.clientX - lastX;
         
-        // Control pitch with vertical mouse movement
-        const currentPitch = this.map.getPitch();
-        const newPitch = Math.min(85, Math.max(0, currentPitch + deltaY * 0.3));
-        this.map.setPitch(newPitch);
+        this.tilt(deltaY * 0.3); // Control pitch with vertical mouse movement
         
-        // Control bearing with horizontal mouse movement (only in tracking mode)
-        if (isTracking && Math.abs(deltaX) > 1) { // Only activate on significant horizontal movement
-          const smoothCamera = this.satelliteTracker.getSmoothCamera();
-          const currentBearing = this.map.getBearing();
-          const newBearing = (currentBearing + deltaX * 0.5) % 360;
-          
-          // Enable user-controlled bearing mode and show feedback on first use
-          if (!smoothCamera.isUserControlledBearing()) {
-            smoothCamera.setUserControlledBearing(true, newBearing);
-            this.showMessage('🧭 Manual bearing control active (Press B to reset)', 'info');
-          } else {
-            smoothCamera.updateUserBearing(newBearing);
-          }
-          
-          this.map.setBearing(newBearing);
-        }
+        if (Math.abs(deltaX) > 1) this.turn(deltaX * 0.5); // bearing with horizontal movement (only a significant one)
         
         lastY = e.clientY;
         lastX = e.clientX;

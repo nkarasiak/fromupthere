@@ -46,28 +46,32 @@ export class SmoothTracker {
   }
 
   getPredictedPosition(timestamp?: number): PredictivePosition | null {
-    if (!this.satrec) return null;
-    const t = timestamp || this.clock();
-    const p = this.ground(t), q = this.ground(t + HEADING_DT_MS);
-    if (!p || !q) return null;
-    const r = Math.PI / 180, dl = (q.lng - p.lng) * r;
-    const bearing = Math.atan2(Math.sin(dl) * Math.cos(q.lat * r),
-      Math.cos(p.lat * r) * Math.sin(q.lat * r) - Math.sin(p.lat * r) * Math.cos(q.lat * r) * Math.cos(dl)) / r;
-    return {
-      longitude: p.lng, latitude: p.lat, altitude: p.alt, velocity: p.velocity,
-      timestamp: t, confidence: 1, bearing: (bearing + 360) % 360
-    };
+    return this.satrec && predictPosition(this.satrec, timestamp || this.clock());
   }
+}
 
-  private ground(t: number) {
-    const date = new Date(t);
-    const pv = satellite.propagate(this.satrec!, date);
-    if (!pv || typeof pv.position === 'boolean' || !pv.position || typeof pv.velocity === 'boolean' || !pv.velocity) return null;
-    const g = satellite.eciToGeodetic(pv.position, satellite.gstime(date));
-    const v = pv.velocity;
-    return {
-      lng: satellite.degreesLong(g.longitude), lat: satellite.degreesLat(g.latitude), alt: g.height,
-      velocity: Math.hypot(v.x, v.y, v.z)
-    };
-  }
+// The ground point, altitude, speed and ground track heading at time t (ms). Also where a fly-in aims, so it ends exactly
+// where tracking starts (a heading computed another way differed by ~3 deg: the camera jumped ~100 km at the hand-off).
+export function predictPosition(satrec: satellite.SatRec, t: number): PredictivePosition | null {
+  const p = ground(satrec, t), q = ground(satrec, t + HEADING_DT_MS);
+  if (!p || !q) return null;
+  const r = Math.PI / 180, dl = (q.lng - p.lng) * r;
+  const bearing = Math.atan2(Math.sin(dl) * Math.cos(q.lat * r),
+    Math.cos(p.lat * r) * Math.sin(q.lat * r) - Math.sin(p.lat * r) * Math.cos(q.lat * r) * Math.cos(dl)) / r;
+  return {
+    longitude: p.lng, latitude: p.lat, altitude: p.alt, velocity: p.velocity,
+    timestamp: t, confidence: 1, bearing: (bearing + 360) % 360
+  };
+}
+
+function ground(satrec: satellite.SatRec, t: number) {
+  const date = new Date(t);
+  const pv = satellite.propagate(satrec, date);
+  if (!pv || typeof pv.position === 'boolean' || !pv.position || typeof pv.velocity === 'boolean' || !pv.velocity) return null;
+  const g = satellite.eciToGeodetic(pv.position, satellite.gstime(date));
+  const v = pv.velocity;
+  return {
+    lng: satellite.degreesLong(g.longitude), lat: satellite.degreesLat(g.latitude), alt: g.height,
+    velocity: Math.hypot(v.x, v.y, v.z)
+  };
 }

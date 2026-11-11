@@ -66,16 +66,6 @@ export class URLState {
         window.history.replaceState({}, '', url.toString());
       }
     }
-    
-    // Default to ISS tracker if on homepage with no satellite specified and no redirect parameter
-    if (path === '/' && !urlParams.get('satellite') && !urlParams.get('name') && !urlParams.get('redirect') && !urlParams.get('group')) {
-      const url = new URL(window.location.href);
-      url.pathname = `${BASE}/iss-zarya`;
-      url.searchParams.set('zoom', '4.7');
-      url.searchParams.set('pitch', '62');
-      window.history.replaceState({}, '', url.toString());
-      return;
-    }
   }
 
   setInitializing(state: boolean) {
@@ -98,7 +88,7 @@ export class URLState {
       return 4.7; // Default zoom for satellite tracking
     }
     
-    return 5; // Default for homepage
+    return 0; // Homepage: a small Earth far away, then the fly-in closes on EDC-07
   }
 
   getInitialPitch(): number {
@@ -131,9 +121,10 @@ export class URLState {
     window.history.pushState({}, '', url.toString());
   }
 
-  getInitialBearing(): number {
-    const urlParams = new URLSearchParams(window.location.search);
-    return parseFloat(urlParams.get('bearing') || '0');
+  // A number from the URL, or null when absent or not a number (bearing=auto)
+  getNumber(key: string): number | null {
+    const v = new URLSearchParams(window.location.search).get(key);
+    return v === null || !Number.isFinite(parseFloat(v)) ? null : parseFloat(v);
   }
 
   getInitialSatellite(): string | null {
@@ -161,7 +152,8 @@ export class URLState {
     return null;
   }
 
-  updateURL(zoom: number, followingSatellite: string | null, pitch?: number, bearing?: number) {
+  // bearing: 'auto', degrees, or null (north up); speed: null for the view's default
+  updateURL(zoom: number, followingSatellite: string | null, pitch: string | null, bearing: string | null, speed: string | null) {
     if (this.isInitializing) {
       // Skipping URL update during initialization
       return;
@@ -191,56 +183,16 @@ export class URLState {
       urlChanged = true;
     }
     
-    // For parameters like zoom, pitch, bearing, use query strings
-    // Always remove x,y coordinates from URL (don't store them)
-    url.searchParams.delete('x');
-    url.searchParams.delete('y');
-    
-    // Update zoom only if significantly different (increased threshold)
-    const currentUrlZoomStr = url.searchParams.get('zoom');
-    const currentUrlZoom = currentUrlZoomStr ? parseFloat(currentUrlZoomStr) : null;
-    if (currentUrlZoom === null || Math.abs(zoom - currentUrlZoom) > 0.1) {
-      url.searchParams.set('zoom', zoom.toFixed(1));
-      urlChanged = true;
-    }
-    
-    // Update pitch if provided and significantly different
-    if (pitch !== undefined) {
-      const currentUrlPitchStr = url.searchParams.get('pitch');
-      const currentUrlPitch = currentUrlPitchStr ? parseFloat(currentUrlPitchStr) : 0;
-      
-      if (pitch < 1) {
-        // Remove pitch parameter if it's very small
-        if (currentUrlPitchStr) {
-          url.searchParams.delete('pitch');
-          urlChanged = true;
-        }
-      } else if (Math.abs(pitch - currentUrlPitch) > 1) {
-        url.searchParams.set('pitch', pitch.toFixed(0));
-        urlChanged = true;
-      }
-    }
-    
-    // Update bearing if provided and significantly different
-    if (bearing !== undefined) {
-      const currentUrlBearingStr = url.searchParams.get('bearing');
-      const currentUrlBearing = currentUrlBearingStr ? parseFloat(currentUrlBearingStr) : 0;
-      // Normalize bearing to 0-360 range
-      const normalizedBearing = ((bearing % 360) + 360) % 360;
-      const normalizedCurrentBearing = ((currentUrlBearing % 360) + 360) % 360;
-      
-      if (Math.abs(normalizedBearing) < 1) {
-        // Remove bearing parameter if it's very small
-        if (currentUrlBearingStr) {
-          url.searchParams.delete('bearing');
-          urlChanged = true;
-        }
-      } else if (Math.abs(normalizedBearing - normalizedCurrentBearing) > 1) {
-        url.searchParams.set('bearing', normalizedBearing.toFixed(0));
-        urlChanged = true;
-      }
-    }
-    
+    // View parameters as query strings (null: left out); x,y are never kept
+    const put = (key: string, value: string | null) => value === null ? url.searchParams.delete(key) : url.searchParams.set(key, value);
+    put('x', null);
+    put('y', null);
+    put('zoom', zoom.toFixed(1));
+    put('pitch', pitch);
+    put('bearing', bearing);
+    put('speed', speed);
+    urlChanged = true;
+
     // Only update URL if something actually changed
     if (urlChanged && url.toString() !== originalUrl) {
       window.history.replaceState({}, '', url.toString());

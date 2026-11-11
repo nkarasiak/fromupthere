@@ -83,12 +83,11 @@
       </div>
     </div>
 
-    <!-- Command Palette Hint -->
-    <div id="command-hint" class="command-hint">
-      Press <span class="command-shortcut">/</span> to search satellites
-    </div>
     
     <!-- Top: what on the left, when on the right -->
+    <!-- While tracking a constellation's satellite, on mouse move: back to the whole constellation (main.ts) -->
+    <button id="show-group"></button>
+
     <div id="cockpit-panel">
       <!-- Top left, as a map title: what (constellation › satellite) and its figures -->
       <div id="top-what">
@@ -102,6 +101,9 @@
           <span><span id="tracked-speed">---</span> <span class="banner-unit">km/s</span></span>
         </span>
       </div>
+
+      <!-- A mega-constellation's key, under the title: how to read the rings, the shells' colours -->
+      <div id="constellation-key" hidden></div>
 
       <!-- Top right: when (click to set), then play / speed / back to now -->
       <div id="top-when">

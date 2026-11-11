@@ -25,6 +25,19 @@ function nightness(sinElevation: number): number {
   return t * t * (3 - 2 * t);
 }
 
+// The 2012 city lights never change, but NASA serves them no-store: the browser refetched each one every time (0.2-1.7 s).
+// Their bytes are kept in Cache Storage, across visits (none in an insecure context: then just fetched).
+export async function nightTileBytes(z: number, x: number, y: number, signal?: AbortSignal): Promise<Blob> {
+  const url = tileUrl(z, x, y);
+  const cache = typeof caches === 'undefined' ? null : await caches.open('night-tiles-v1').catch(() => null);
+  const hit = await cache?.match(url);
+  if (hit) return hit.blob();
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`night tile ${z}/${x}/${y}: ${res.status}`);
+  cache?.put(url, res.clone()).catch(() => { /* full: fetched again next time */ });
+  return res.blob();
+}
+
 // Decoded city-lights tiles, so re-rendering the terminator (time-lapse) doesn't refetch/decode them
 const rawTiles = new Map<string, ImageBitmap>();
 
@@ -45,9 +58,7 @@ async function loadNightTile(url: string, signal: AbortSignal): Promise<ImageBit
   const key = `${z}/${x}/${y}`;
   let bitmap = rawTiles.get(key);
   if (!bitmap) {
-    const res = await fetch(tileUrl(z, x, y), { signal });
-    if (!res.ok) throw new Error(`night tile ${key}: ${res.status}`);
-    bitmap = await createImageBitmap(await res.blob());
+    bitmap = await createImageBitmap(await nightTileBytes(z, x, y, signal));
     if (rawTiles.size > 300) rawTiles.clear();
     rawTiles.set(key, bitmap);
   }

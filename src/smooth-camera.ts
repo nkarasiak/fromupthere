@@ -29,7 +29,6 @@ export class SmoothCamera {
   
   // Smoothing parameters for video-like tracking
   private readonly SMOOTHING_FACTOR = 0.08; // Lower = smoother (was 0.15)
-  private readonly MIN_MOVEMENT_THRESHOLD = 0.00001; // Lower threshold for more updates
   private readonly PREDICTION_LEAD_TIME = 100; // Predict 100ms ahead for smoother tracking
   
   // Adaptive smoothing based on satellite speed
@@ -41,21 +40,54 @@ export class SmoothCamera {
   // Read the target every frame (pushed targets arrive at ~30 Hz: at x100 the camera then stepped 25 km at a time
   // behind a satellite drawn at the frame's own time, so the satellite shook on screen)
   source?: () => PredictivePosition | null;
+  // Equator-equivalent zoom as if the camera orbited the satellite (the URL's zoom); the map's own zoom is derived from it
+  zoom = 4.7;
+  private lastZoom: number | null = null; // map zoom set by the last frame: a change since then is the user zooming
+  private zoomTarget = 4.7; // the wheel's zoom, eased toward (MapLibre's own scroll zoom is off: jumpTo stops it each frame)
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    this.zoomTarget = Math.min(MAX_EYE_ZOOM, this.zoomTarget - e.deltaY * (e.deltaMode === 1 ? 40 : 1) / 450); // MapLibre's rate
+  };
+  private followed: [number, number] = [0, 0]; // smoothed satellite position
+  heading = 0; // smoothed camera bearing at the satellite (the map's bearing is the one at the ground point)
+  // Point of view, the angle at the satellite between straight down and the line of sight to it: 0 from straight above,
+  // 90 level with it, more from below (the URL's pitch)
+  pov = 62;
+  private lastGood = { pov: 62, zoom: 4.7 }; // the last view that kept the satellite on screen
 
   // User bearing control
   private userControlledBearing = false;
   private userBearing = 0;
+  // A selected satellite on show, like a game's chase camera: once the fly-in ends the view drifts on its own, slow
+  // out-of-step swings of bearing, pitch and distance (SHOW) about where tracking began. Never all the way round: its
+  // picture is flat, from behind it would face the wrong way. Any click, wheel or key stops it where it is.
+  private showPending = false;
+  private show: { t0: number; pov: number; zoom: number } | null = null;
 
   constructor(map: MapLibreMap) {
+    for (const e of ['pointerdown', 'wheel', 'keydown']) addEventListener(e, () => {
+      if (this.show) this.setUserControlledBearing(true, this.heading);
+      this.show = null;
+      this.showPending = false;
+    }, { capture: true });
     this.map = map;
     
   }
 
   // Start smooth tracking of a position
   startSmoothTracking(initialPosition: PredictivePosition): void {
+    if (this.showPending) this.show = { t0: performance.now(), pov: this.pov, zoom: this.zoom }; // from where the fly-in ends
+    this.showPending = false;
     
     this.targetPosition = initialPosition;
     this.isSmoothing = true;
+    this.followed = [initialPosition.longitude, initialPosition.latitude];
+    this.heading = this.userControlledBearing ? this.userBearing : initialPosition.bearing ?? this.map.getBearing();
+    this.lastZoom = this.map.getZoom();
+    this.lastGood = { pov: this.pov, zoom: this.zoom };
+    this.zoomTarget = this.zoom;
+    this.map.scrollZoom.disable();
+    this.map.getCanvasContainer().addEventListener('wheel', this.onWheel, { passive: false });
     
     // Start the smooth animation loop
     this.startSmoothLoop();
@@ -71,6 +103,9 @@ export class SmoothCamera {
     
     this.isSmoothing = false;
     this.targetPosition = null;
+    this.lastZoom = null;
+    this.map.scrollZoom.enable();
+    this.map.getCanvasContainer().removeEventListener('wheel', this.onWheel);
     
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame);
@@ -101,20 +136,21 @@ export class SmoothCamera {
   private applySmoothMovement(): void {
     if (!this.targetPosition) return;
 
+    // On show: each swing eases in over the first seconds (r), then runs at its own period
+    const t = this.show ? (performance.now() - this.show.t0) / 1000 : 0, r = Math.min(1, t / 6);
+    const swing = ([amp, period]: number[]) => r * amp * Math.sin(2 * Math.PI * t / period);
+    if (this.show) {
+      this.pov = this.show.pov + swing(SHOW.pov);
+      this.zoomTarget = this.show.zoom + swing(SHOW.zoom);
+    }
+
     const currentState = this.getCurrentCameraState();
     const targetCenter: [number, number] = [
       this.targetPosition.longitude,
       this.targetPosition.latitude
     ];
-
-    // Calculate distance for movement threshold
-    const distance = this.calculateDistance(currentState.center, targetCenter);
-    
-    
-    // Skip update if movement is too small
-    if (distance < this.MIN_MOVEMENT_THRESHOLD) {
-      return;
-    }
+    if (this.lastZoom !== null) this.zoomTarget += currentState.zoom - this.lastZoom; // other zooms (keys, double click)
+    this.zoom += (Math.min(MAX_EYE_ZOOM, this.zoomTarget) - this.zoom) * 0.3;
 
     // Calculate adaptive smoothing factor based on satellite velocity
     const base = this.calculateAdaptiveSmoothingFactor();
@@ -124,33 +160,36 @@ export class SmoothCamera {
     const predictiveTarget = this.calculatePredictiveTarget(targetCenter);
     
     // Smooth interpolation toward target
-    const newCenter = this.interpolatePosition(
-      currentState.center,
-      predictiveTarget,
-      smoothingFactor
-    );
+    this.followed = this.interpolatePosition(this.followed, predictiveTarget, smoothingFactor);
 
     // Calculate target bearing - use user bearing if controlled, otherwise satellite direction
-    let targetBearing = currentState.bearing; // Default to current bearing
+    let targetBearing = this.heading;
     if (this.userControlledBearing) {
       targetBearing = this.userBearing;
     } else if (this.targetPosition.bearing !== undefined) {
-      targetBearing = this.targetPosition.bearing;
+      targetBearing = this.targetPosition.bearing + (this.show ? swing(SHOW.bearing) : 0);
     }
 
     // Smooth bearing interpolation to avoid sudden jumps
-    const newBearing = this.interpolateBearing(currentState.bearing, targetBearing, 1 - (1 - base * 0.5) ** this.speed);
+    const newBearing = this.heading = this.interpolateBearing(this.heading, targetBearing, 1 - (1 - base * 0.5) ** this.speed);
 
-    // Apply the smooth movement
-    // MapLibre's globe grows by 1/cos(lat) at a fixed zoom: shift the zoom with the latitude so the globe keeps its
-    // size on screen (near a pole it would otherwise zoom in ~5x and the satellite would leave the screen)
-    const zoom = currentState.zoom + globeZoomShift(newCenter[1]) - globeZoomShift(currentState.center[1]);
-    this.map.jumpTo({
-      center: newCenter,
-      zoom,
-      pitch: currentState.pitch,
-      bearing: newBearing // Use automatic bearing based on satellite direction
-    });
+    const frame = (pov = this.pov) => framing(this.followed, this.targetPosition!.altitude, newBearing, pov, this.zoom, this.map.transform.height);
+    let view = frame();
+    if (!(view.off <= MAX_OFF_AXIS)) { // satellite off the top of the screen, or camera underground: refuse that move
+      ({ pov: this.pov, zoom: this.zoom } = this.lastGood);
+      this.zoomTarget = this.zoom;
+      view = frame();
+    }
+    this.lastGood = { pov: this.pov, zoom: this.zoom };
+    // MapLibre's globe won't centre beyond 85 deg: it clamps the ground point the camera orbits, which moves the camera
+    // elsewhere, turned round. Near a pole, look more steeply down (that point nearer the satellite) until it's within
+    // reach; the chosen pov comes back past the pole. ponytail: an orbit whose nadir passes 85 deg still clamps
+    for (let pov = this.pov; Math.abs(view.camera.center[1]) > MAX_CENTER_LAT && pov > 0;) {
+      pov = Math.max(0, pov - 2);
+      view = frame(pov);
+    }
+    this.map.jumpTo(view.camera);
+    this.lastZoom = this.map.getZoom();
   }
 
   // Calculate adaptive smoothing factor based on satellite velocity
@@ -254,17 +293,6 @@ export class SmoothCamera {
     return newBearing;
   }
 
-  // Calculate distance between two geographic points
-  private calculateDistance(pos1: [number, number], pos2: [number, number]): number {
-    const deltaLng = Math.abs(pos2[0] - pos1[0]);
-    const deltaLat = Math.abs(pos2[1] - pos1[1]);
-    
-    // Handle longitude wrapping
-    const wrappedDeltaLng = Math.min(deltaLng, 360 - deltaLng);
-    
-    return Math.sqrt(wrappedDeltaLng * wrappedDeltaLng + deltaLat * deltaLat);
-  }
-
   // Get current camera state
   private getCurrentCameraState(): CameraState {
     return {
@@ -295,10 +323,74 @@ export class SmoothCamera {
     }
   }
 
+  onShow(): boolean {
+    return this.show !== null;
+  }
+
+  // Put the satellite about to be tracked on show (from the end of its fly-in)
+  startShow(): void {
+    this.showPending = true;
+    this.show = null;
+  }
+
   isUserControlledBearing(): boolean {
     return this.userControlledBearing;
   }
 
+}
+
+// The show's swings: [amplitude, period in s], periods out of step so the motion doesn't visibly repeat
+const SHOW = { bearing: [15, 50], pov: [7, 37], zoom: [0.3, 29] }; // deg, deg (up and down), zoom (closer and farther)
+const MAX_CENTER_LAT = 85; // MapLibre's globe clamps its centre at 85.05 deg
+const MAX_EYE_ZOOM = 14; // ~7 km from the satellite
+
+const MAX_PITCH = 85; // MapLibre's camera tilt, at the ground point it orbits
+const MAX_OFF_AXIS = Math.atan(0.46); // satellite above the view's axis: the top padding below then stays under 80% of the screen
+
+// MapLibre's camera for a point of view on a satellite: `pov` (see SmoothCamera.pov) and `zoom` place the camera (zoom:
+// equator-equivalent, as if it orbited the satellite: 1.5 screen heights away, a globe of radius R spanning
+// 512 * 2^zoom / 2 pi px), `bearing` turns it (at the satellite). MapLibre's globe camera orbits a ground point (it
+// ignores the centre elevation) at most MAX_PITCH from its vertical. When the line of sight through the satellite lands
+// on the ground within that, that's the point and the satellite is at the screen centre. Otherwise (level with it or
+// below), the camera looks down to the ground at MAX_PITCH and the satellite shows above the axis (by `off`), kept on
+// screen by a top padding that moves the axis down. All in the vertical plane through the satellite along the bearing:
+// x ahead, y up at the satellite, km from the Earth's centre.
+export function framing(sat: [number, number], altKm: number, bearing: number, pov: number, zoom: number, height: number) {
+  const R = 6371, rad = Math.PI / 180, psi = pov * rad;
+  const d = 1.5 * height * 2 * Math.PI * R / (512 * 2 ** zoom);
+  const L = [Math.sin(psi), -Math.cos(psi)]; // line of sight camera -> satellite
+  const P = [-d * L[0], R + altKm - d * L[1]], rP = Math.hypot(P[0], P[1]); // camera
+  const hit = (A: number[]) => { // distance along A to the ground, or -1
+    const b = P[0] * A[0] + P[1] * A[1], disc = b * b - rP * rP + R * R;
+    return disc < 0 ? -1 : -b - Math.sqrt(disc);
+  };
+  const tilt = (A: number[], t: number) => Math.acos(-(A[0] * (P[0] + t * A[0]) + A[1] * (P[1] + t * A[1])) / R); // at the ground point
+  let A = L, t = hit(L);
+  const hidden = t > 0 && t < d; // the Earth is between the camera and the satellite
+  if (t <= 0 || hidden || tilt(L, t) > MAX_PITCH * rad) {
+    // From the nadir toward the line of sight by a: the ground point seen at MAX_PITCH (law of sines in the triangle
+    // Earth centre, camera, ground point)
+    const a = Math.asin(R * Math.sin(MAX_PITCH * rad) / rP), n = [-P[0] / rP, -P[1] / rP], ln = L[0] * n[0] + L[1] * n[1];
+    const f = [L[0] - ln * n[0], L[1] - ln * n[1]], fl = Math.hypot(f[0], f[1]);
+    A = [Math.cos(a) * n[0] + Math.sin(a) * f[0] / fl, Math.cos(a) * n[1] + Math.sin(a) * f[1] / fl];
+    t = hit(A);
+  }
+  const off = rP < R + 1 || hidden ? NaN : Math.acos(Math.min(1, L[0] * A[0] + L[1] * A[1])); // NaN: no view of it
+  // Ground point: `ang` ahead of the satellite on the great circle along the bearing; the map's bearing is the course there
+  const ang = Math.atan2(P[0] + t * A[0], P[1] + t * A[1]), b = bearing * rad, la = sat[1] * rad;
+  const lat = Math.asin(Math.sin(la) * Math.cos(ang) + Math.cos(la) * Math.sin(ang) * Math.cos(b));
+  const lng = sat[0] * rad + Math.atan2(Math.sin(b) * Math.sin(ang) * Math.cos(la), Math.cos(ang) - Math.sin(la) * Math.sin(lat));
+  const course = Math.atan2(Math.sin(b) * Math.cos(la), Math.cos(la) * Math.cos(ang) * Math.cos(b) - Math.sin(la) * Math.sin(ang));
+  return {
+    camera: {
+      center: [(lng / rad + 540) % 360 - 180, lat / rad] as [number, number],
+      zoom: Math.log2(1.5 * height * 2 * Math.PI * R * Math.cos(lat) / (512 * t)),
+      bearing: course / rad,
+      pitch: tilt(A, t) / rad,
+      padding: { top: Math.max(0, 2 * (1.5 * height * Math.tan(off) - 0.3 * height)), bottom: 0, left: 0, right: 0 }
+    },
+    off
+  };
 }
 
 // Zoom offset at latitude `lat` that keeps MapLibre's globe the size it has on screen at the equator

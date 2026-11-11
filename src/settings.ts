@@ -4,7 +4,7 @@ export const SPEEDS = [1, 10, 100, 300]; // time-lapse speeds, x real time
 
 export const settings = {
   speed: 100,      // constellation time-lapse speed it opens at
-  picture: false   // tracked satellite drawn as its picture on the globe instead of a dot
+  picture: true    // tracked satellite drawn as its picture on the globe instead of a dot
 };
 const KEY = 'fromupthere.settings';
 try { Object.assign(settings, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { /* blocked storage: defaults */ }
@@ -16,6 +16,7 @@ const SHORTCUTS = [
   ['Esc', 'Stop following the satellite'],
   ['F', 'Fullscreen'],
   ['G', 'Globe / flat map'],
+  ['← →', 'Previous / next satellite of its constellation'],
   ['B', 'Camera bearing back to automatic'],
   ['Ctrl + drag', 'Tilt the camera']
 ];

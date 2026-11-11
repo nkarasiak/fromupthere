@@ -46,6 +46,10 @@
 #tracked-parent:empty { display: none; }
 #tracked-parent button { padding: 0; color: #a8a8a8; }
 #tracked-parent span, #tracked-count { color: #777; }
+#constellation-key { position: absolute; top: 40px; left: 20px; display: flex; flex-direction: column; gap: 6px; white-space: nowrap; }
+#constellation-key[hidden] { display: none; }
+#constellation-key > span { display: flex; gap: 14px; color: #b8b8b8; font-variant-numeric: tabular-nums; }
+#constellation-key i { display: inline-block; width: 14px; height: 2px; margin-right: 6px; vertical-align: middle; }
 .sat-figures { display: none; gap: 12px; margin-left: 8px; font-variant-numeric: tabular-nums; }
 body.tracking-mode .sat-figures { display: flex; }
 .banner-unit { color: #9a9a9a; }

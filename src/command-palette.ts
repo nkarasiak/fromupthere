@@ -16,7 +16,6 @@ export class CommandPalette {
   private filteredSatellites: Array<{id: string, name: string, altitude?: number}> = [];
   private selectedIndex = 0;
   private isOpen = false;
-  private hint: HTMLElement;
   private virtualScrollOffset = 0;
   private readonly itemHeight = 60; // Height of each satellite item
   private readonly maxVisibleItems = 8; // Max items to render at once
@@ -35,14 +34,7 @@ export class CommandPalette {
     this.palette = document.getElementById('command-palette')!;
     this.input = document.getElementById('command-input') as HTMLInputElement;
     this.results = document.getElementById('command-results')!;
-    this.hint = document.getElementById('command-hint')!;
-    
-    
     this.setupEventListeners();
-    this.showHint();
-    
-    // Hide hint after 5 seconds
-    setTimeout(() => this.hideHint(), 5000);
   }
 
   setCallbacks(callbacks: {
@@ -332,7 +324,6 @@ export class CommandPalette {
     this.virtualScrollOffset = 0;
     this.filteredSatellites = [...this.satelliteResults];
     this.renderSatelliteResults();
-    this.hideHint();
   }
 
   private close() {
@@ -346,14 +337,5 @@ export class CommandPalette {
     if (canvas) {
       canvas.setAttribute('tabindex', '0');
     }
-  }
-
-
-  private showHint() {
-    this.hint.classList.add('show');
-  }
-
-  private hideHint() {
-    this.hint.classList.remove('show');
   }
 }

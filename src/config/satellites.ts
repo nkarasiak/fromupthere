@@ -215,6 +215,7 @@ export const CONSTELLATIONS: Constellation[] = [
   { id: 'strix', name: 'Synspective StriX', queries: ['STRIX'], match: /^strix-/, color: [150, 255, 180], swathKm: 20, radar: true },
   { id: 'iqps', name: 'iQPS', queries: ['QPS-SAR'], match: /^qps-sar-/, color: [255, 180, 80], swathKm: 7, radar: true },
   // Not Earth imagers: communications, navigation, geostationary weather
+  { id: 'starlink', name: 'Starlink', queries: ['STARLINK'], match: /^starlink-\d+$/, color: [79, 209, 255], swathKm: 0 },
   { id: 'oneweb', name: 'OneWeb', queries: ['ONEWEB'], match: /^oneweb-\d+$/, color: [80, 140, 255], swathKm: 0 },
   { id: 'kuiper', name: 'Amazon Kuiper', queries: ['KUIPER'], match: /^kuiper-/, color: [255, 170, 50], swathKm: 0 },
   { id: 'qianfan', name: 'Qianfan', queries: ['QIANFAN'], match: /^qianfan-/, color: [255, 80, 80], swathKm: 0 },

@@ -113,38 +113,3 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
-.command-shortcut {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  background: rgba(255, 255, 255, 0.08);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Monaco', 'Consolas', monospace;
-}
-
-/* Command palette hint */
-.command-hint {
-  position: fixed;
-  bottom: 20px;
-  left: 50%; /* centred: the bottom-right corner holds the map credits */
-  background: rgba(0, 0, 0, 0.9);
-  color: rgba(255, 255, 255, 0.7);
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-family: 'Inter', sans-serif;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 1000;
-  transition: all 0.3s ease;
-  opacity: 0;
-  transform: translate(-50%, 10px);
-}
-
-.command-hint.show {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-/* Touch screens have no "/" key */
-@media (hover: none) {
-  .command-hint { display: none; }
-}
