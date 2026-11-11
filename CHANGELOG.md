@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎬 Landing and tracking show
+- **Landing on EDC-07**: `/` flies in from a small Earth to EDC-07 (YAM-16), tracked live with the rest of EarthDaily's constellation around it (the `/` → `/iss-zarya` redirect is gone).
+- **The tracked satellite's constellation around it**: for imagers (up to 16 satellites; Planet's ~100 stay dots) every mate gets its picture, sensor cone, scan line, swath and name; a click on one, or ← / →, switches to it and keeps the clock. Mates are drawn in perspective but never bigger than the tracked satellite nor below 60 % of it; their swaths at 40 % strength so overlapping tracks don't stack up to solid colour. The tracked satellite is named too.
+- **Chase camera**: once a fly-in ends the view drifts on its own (bearing ±15°, pitch ±7°, zoom ±0.3, out-of-step periods) until a click, wheel or key; the URL keeps the starting view meanwhile. The fly-in now aims with the tracker's own position and heading: no ~100 km jump when tracking takes over.
+- **"Show the … constellation"** button at the bottom centre while tracking a constellation's satellite: appears when the pointer moves, hides when it rests.
+- **Satellite pictures on by default** (the setting stays).
+- **Poles**: the camera looks more steeply down while its ground point would pass 85° (MapLibre's globe clamps its centre there, which turned the view round).
+- **Swaths**: drawn wherever their rows are in view, even once the satellite is past the horizon; nothing drawn through the Earth's limb.
+- **Imagery**: Esri tiles requested a level sharper (declared 128 px) and one level across the whole view up to 3× the centre distance, so pitched views no longer show patches where levels meet and climbing doesn't blur. Night lights (served no-store by NASA) kept in Cache Storage across visits; tiles along the tracked satellite's next 20 min are fetched ahead.
+- **Mega-constellations**: leaving one (Starlink…) drops its thousands of satellites, which slowed every loop while tracking; it fades out during the fly-in to the tracked satellite.
+- Toasts replace each other instead of overlapping; "satellites" spelled out after a constellation's count; the "Press / to search" hint is gone.
+
 ### 🛰️ Tracking view
 - **Real altitude**: the tracked satellite is drawn inside MapLibre's globe (like the constellation view) at its real height, not ~0.5 km above the ground. Imagers get a sensor cone down to a scan line that follows the ground; other satellites a plumb line. Satellites without a picture get a crisp vector dot in their constellation's colour; pictures are half their former size and keep it over the poles.
 - **Swath**: painted behind the satellite over the last 20 min, fading with age. Built from cross-track arcs along the ground, so it meets the scan line exactly even for MODIS-wide swaths; dims with the light to a faint trace where it's dark (no imaging); stays on top of 3D relief and stops at the horizon.
