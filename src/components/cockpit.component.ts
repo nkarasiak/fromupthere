@@ -1,4 +1,3 @@
-import { SatelliteData } from '../types/satellite';
 
 export class CockpitComponent {
   private commandPalette?: any; // Will hold reference to CommandPalette instance
@@ -113,27 +112,6 @@ export class CockpitComponent {
         activeDropdown = null;
       }
     });
-  }
-
-  updateStatus(satellites: Map<string, SatelliteData>, followingSatellite: string | null): void {
-    const trackedAltitudeElement = document.getElementById('tracked-altitude');
-    const trackedNameElement = document.getElementById('tracked-name');
-    const trackedSpeedElement = document.getElementById('tracked-speed');
-    
-    // Update tracked satellite information
-    if (followingSatellite) {
-      const trackedSatellite = satellites.get(followingSatellite);
-      if (trackedSatellite) {
-        if (trackedAltitudeElement) trackedAltitudeElement.textContent = trackedSatellite.altitude.toFixed(0);
-        if (trackedNameElement) trackedNameElement.textContent = trackedSatellite.shortname || trackedSatellite.name;
-        if (trackedSpeedElement) trackedSpeedElement.textContent = trackedSatellite.velocity.toFixed(2);
-      }
-    } else {
-      // No satellite being tracked - show defaults
-      if (trackedAltitudeElement) trackedAltitudeElement.textContent = '---';
-      if (trackedNameElement) trackedNameElement.textContent = 'No satellite selected';
-      if (trackedSpeedElement) trackedSpeedElement.textContent = '---';
-    }
   }
 
 

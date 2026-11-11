@@ -192,11 +192,7 @@ export class DeckSatelliteTracker {
   // Satellite size scaling
   private satelliteSizeMultiplier = 1.0; // Default size multiplier for all satellites
   private trackedSatelliteSizeMultiplier = 1.0; // Size multiplier for tracked satellite only
-  private readonly MIN_SIZE_MULTIPLIER = 0.1; // 10% of original size
-  private readonly MAX_SIZE_MULTIPLIER = 5.0; // 500% of original size
   
-  // Cockpit visibility
-  private isCockpitVisible = true;
   
   
   // Dynamic satellite data fetcher
@@ -228,28 +224,6 @@ export class DeckSatelliteTracker {
 
   private onStopFollowingCallback?: () => void;
 
-  setOnStopFollowingCallback(callback: () => void) {
-    this.onStopFollowingCallback = callback;
-  }
-
-  private satelliteDataService?: any;
-
-  async setSatelliteDataService(service: any): Promise<void> {
-    this.satelliteDataService = service;
-    // Update satellites with data from the service if available
-    if (service && service.getSatellites) {
-      const serviceSatellites = service.getSatellites();
-      serviceSatellites.forEach((sat: any, id: string) => {
-        if (!this.satellites.has(id)) {
-          this.satellites.set(id, sat);
-        }
-      });
-    }
-  }
-
-  getSatelliteDataService(): any {
-    return this.satelliteDataService;
-  }
 
   private setupAggressivePitchOverride() {
     // Simplified approach: Let MapLibre handle pitch completely
@@ -384,13 +358,6 @@ export class DeckSatelliteTracker {
     setTimeout(syncView, 100);
   }
 
-  // Load only ISS immediately for instant tracking
-  loadISSOnly() {
-    // Clear all satellites first
-    this.satellites.clear();
-    return this.loadConfigSatelliteById('iss-zarya');
-  }
-  
   // Clear all satellites except ISS
   clearAllSatellitesExceptISS() {
     const issData = this.satellites.get('iss-zarya');
@@ -398,15 +365,6 @@ export class DeckSatelliteTracker {
     if (issData) {
       this.satellites.set('iss-zarya', issData);
     }
-  }
-
-  // Disable external satellite loading for homepage performance
-  disableExternalSatelliteLoading() {
-    this.allowExternalSatelliteLoading = false;
-    // Clear any cached external satellite data to prevent automatic loading
-    this.satelliteDataFetcher.clearCache();
-    // Force clear all satellites except ISS to ensure clean state
-    this.clearAllSatellitesExceptISS();
   }
 
   // Re-enable external satellite loading
@@ -1286,26 +1244,6 @@ export class DeckSatelliteTracker {
     }
   }
 
-  async initialize() {
-    // Load config satellites first (synchronously) for immediate tracking
-    this.loadConfigSatellites();
-    
-    // External satellites will be loaded on-demand for search functionality
-    // This keeps the app fast when viewing specific satellites
-    
-    this.loadSatelliteIcons();
-    this.updateLayers();
-    // Start background satellite position updates (not camera tracking)
-    this.startBackgroundUpdates();
-    
-    // Setup search and filters after satellites are loaded
-    setTimeout(() => {
-      this.setupSearchFunctionality();
-      this.setupKeyboardShortcuts();
-      this.setupCockpitToggle();
-    }, 100);
-  }
-
   private initializeWorker() {
     // Disable worker for now due to module loading issues with importScripts
     // All calculations will use main thread fallback which works reliably
@@ -1315,60 +1253,8 @@ export class DeckSatelliteTracker {
   // Prioritize satellites for loading - important ones first
   // prioritizeAllSatellites() method removed - no longer needed since we don't bulk load satellites
 
-  private loadConfigSatellites() {
-    // Load satellites from config immediately (no external API calls)
-    SATELLITE_CONFIGS_WITH_STARLINK.forEach(sat => {
-      try {
-        // Skip configs without TLE data - they will be loaded from external sources
-        if (!sat.tle1 || !sat.tle2) {
-          return;
-        }
-        
-        const position = this.calculateSatellitePosition(sat.tle1, sat.tle2, sat.id);
-        
-        if (isNaN(position.longitude) || isNaN(position.latitude) || isNaN(position.altitude)) {
-          return;
-        }
-        
-        this.satellites.set(sat.id, {
-          id: sat.id,
-          name: sat.name || sat.id,
-          shortname: sat.shortname,
-          alternateName: sat.alternateName,
-          type: sat.type || 'communication',
-          tle1: sat.tle1,
-          tle2: sat.tle2,
-          dimensions: sat.dimensions || { length: 2.0, width: 1.0, height: 1.0 },
-          image: sat.image,
-          defaultBearing: sat.defaultBearing,
-          scaleFactor: sat.scaleFactor,
-          position: new LngLat(position.longitude, position.latitude),
-          altitude: position.altitude,
-          velocity: position.velocity
-        });
-        
-      } catch (error) {
-        // Silently skip satellites with invalid TLE data
-      }
-    });
-    
-    // Notify that initial config satellites are loaded
-    this.onSatellitesLoadedCallback?.();
-  }
-
   // External satellites are loaded on-demand for search functionality
   // This keeps the app fast when viewing specific satellites
-
-  private loadSatelliteIcons() {
-    // Don't load all images immediately - use lazy loading instead
-    // Only create dot icons for satellites without images
-    const satellitesWithoutImages = Array.from(this.satellites.values()).filter(sat => !sat.image);
-    satellitesWithoutImages.forEach(sat => {
-      this.createDotIcon(sat.id);
-    });
-    
-    // Images will be loaded on-demand when satellites become visible/tracked
-  }
 
   private loadSatelliteIconLazy(satelliteId: string, imageUrl: string) {
     // Don't load if already loaded or loading
@@ -2533,18 +2419,6 @@ export class DeckSatelliteTracker {
   }
 
 
-  toggleOrbits() {
-    this.showOrbits = !this.showOrbits;
-    this.updateLayers();
-    this.showMessage(this.showOrbits ? '🛰️ Orbits shown' : '🛰️ Orbits hidden', 'info');
-  }
-
-
-  togglePause() {
-    this.isPaused = !this.isPaused;
-    this.showMessage(this.isPaused ? '⏸️ Satellite updates paused' : '▶️ Satellite updates resumed', 'info');
-    return this.isPaused;
-  }
 
   // Name of the constellation on view, or null while tracking a single satellite
   getConstellationName(): string | null {
@@ -2688,148 +2562,6 @@ export class DeckSatelliteTracker {
            position.lat <= bounds.getNorth();
   }
 
-
-  // updateFollowing removed - handled by ultra-smooth tracking system
-
-  private setupSearchFunctionality() {
-    const searchInput = document.getElementById('satellite-search') as HTMLInputElement;
-    const searchResults = document.getElementById('search-results') as HTMLDivElement;
-    
-    if (!searchInput || !searchResults) {
-      return;
-    }
-        
-    searchInput.addEventListener('input', async (e) => {
-      const query = (e.target as HTMLInputElement).value.toLowerCase().trim();
-      await this.performSearch(query, searchResults);
-    });
-    
-    document.addEventListener('click', (e) => {
-      if (!searchInput.contains(e.target as Node) && !searchResults.contains(e.target as Node)) {
-        searchResults.innerHTML = '';
-      }
-    });
-  }
-  
-  private async performSearch(query: string, resultsContainer: HTMLDivElement) {
-    resultsContainer.innerHTML = '';
-    
-    if (query.length < 2) return;
-    
-    // Show loading indicator
-    resultsContainer.innerHTML = '<div style="padding: 8px; color: #999;">Searching satellites...</div>';
-    
-    try {
-      // Load all satellites for search if not already loaded
-      await this.loadAllSatellitesForSearch();
-      
-      // Clear loading indicator
-      resultsContainer.innerHTML = '';
-      
-    } catch (error) {
-      // If loading fails, show error and use any cached data
-      console.warn('Failed to load all satellites for search:', error);
-      resultsContainer.innerHTML = '<div style="padding: 8px; color: #ff9999;">Failed to load satellite database</div>';
-      return;
-    }
-    
-    // Search in the full satellite database (not just active satellites)
-    console.log(`🔍 Searching ${this.searchSatelliteDatabase.size} satellites for "${query}"`);
-    console.log(`🔍 Active satellites: ${this.satellites.size}`);
-    console.log(`🔍 Search database loaded: ${this.searchSatellitesLoaded}`);
-    
-    // Debug: Show some sample satellites from search database
-    const sampleFromSearch = Array.from(this.searchSatelliteDatabase.values()).slice(0, 5);
-    console.log(`🔍 Sample from search database:`, sampleFromSearch.map(sat => sat.name || sat.id));
-    
-    // Debug: If search database is empty, fall back to active satellites
-    const databaseToSearch = this.searchSatelliteDatabase.size > 0 ? this.searchSatelliteDatabase : this.satellites;
-    console.log(`🔍 Using ${databaseToSearch === this.searchSatelliteDatabase ? 'search database' : 'active satellites'} with ${databaseToSearch.size} entries`);
-    
-    // Let's search for the query in a few different ways for debugging
-    console.log(`🔍 Searching for "${query}" in satellite names...`);
-    let foundCount = 0;
-    const matches: any[] = [];
-    
-    for (const satellite of databaseToSearch.values()) {
-      // Apply search filter only - no type filtering
-      const name = (satellite.name || satellite.id).toLowerCase();
-      const id = satellite.id.toLowerCase();
-      const type = satellite.type.toLowerCase();
-      const altName = (satellite.alternateName || '').toLowerCase();
-      
-      const nameMatch = name.includes(query);
-      const idMatch = id.includes(query);
-      const typeMatch = type.includes(query);
-      const altNameMatch = altName.includes(query);
-      
-      const isMatch = nameMatch || idMatch || typeMatch || altNameMatch;
-      
-      if (isMatch) {
-        foundCount++;
-        if (foundCount <= 20) { // Only add first 20 to results
-          matches.push(satellite);
-        }
-        if (foundCount <= 5) { // Log first 5 matches for debugging
-          console.log(`🔍 Match ${foundCount}: ${satellite.name || satellite.id} (ID: ${satellite.id}, Type: ${satellite.type})`);
-        }
-      }
-      
-      // Stop after checking a reasonable number if we have enough matches
-      if (foundCount >= 50) break;
-    }
-    
-    console.log(`🔍 Found ${foundCount} total matches for "${query}", showing first ${Math.min(foundCount, 20)}`);
-      
-    if (matches.length === 0) {
-      resultsContainer.innerHTML = '<div style="padding: 8px; color: #999;">No satellites found</div>';
-      return;
-    }
-    
-    // Sort the matches alphabetically
-    matches.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
-    
-    matches.forEach(satellite => {
-      const resultDiv = document.createElement('div');
-      resultDiv.className = 'search-result';
-      if (this.followingSatellite === satellite.id) {
-        resultDiv.className += ' following';
-      }
-      
-      resultDiv.innerHTML = `
-        <div><strong>${satellite.name || satellite.id}</strong></div>
-        <div style="font-size: 11px; color: #ccc;">
-          ${satellite.type} | ${satellite.dimensions.length}×${satellite.dimensions.width}×${satellite.dimensions.height}m | Alt: ${satellite.altitude.toFixed(0)}km
-        </div>
-        <div style="font-size: 10px; color: #aaa;">
-          ${satellite.position.lat.toFixed(2)}°, ${satellite.position.lng.toFixed(2)}°
-        </div>
-      `;
-      
-      resultDiv.addEventListener('click', () => {
-        // Load the selected satellite from search database into active satellites
-        this.loadSatelliteFromSearchDatabase(satellite.id);
-        this.followSatellite(satellite.id);
-        resultsContainer.innerHTML = '';
-        (document.getElementById('satellite-search') as HTMLInputElement).value = satellite.name || satellite.id;
-        
-        // Close the search dropdown
-        const searchContent = document.getElementById('search-content');
-        const satelliteStatus = document.querySelector('.status-item.satellite[data-section="search"]');
-        if (searchContent && satelliteStatus) {
-          searchContent.classList.remove('active');
-          satelliteStatus.classList.remove('active');
-        }
-      });
-      
-      resultsContainer.appendChild(resultDiv);
-    });
-    
-    if (matches.length === 0 && query.length >= 2) {
-      resultsContainer.innerHTML = '<div style="padding: 8px; color: #999;">No satellites found</div>';
-    }
-  }
-
   
 
   getSatellites(): Map<string, SatelliteData> {
@@ -2848,172 +2580,12 @@ export class DeckSatelliteTracker {
     return SATELLITE_CONFIGS_WITH_STARLINK;
   }
 
-  // Satellite type filtering methods
-  setSatelliteTypeEnabled(type: string, enabled: boolean) {
-    if (enabled) {
-      this.enabledSatelliteTypes.add(type);
-    } else {
-      this.enabledSatelliteTypes.delete(type);
-    }
-    this.updateLayers(); // Refresh display
-  }
-
-  isSatelliteTypeEnabled(type: string): boolean {
-    return this.enabledSatelliteTypes.has(type);
-  }
-
-  getEnabledSatelliteTypes(): Set<string> {
-    return new Set(this.enabledSatelliteTypes);
-  }
-  
   // Tracked satellite only filter methods
   setShowTrackedSatelliteOnly(enabled: boolean) {
     this.showTrackedSatelliteOnly = enabled;
     this.updateLayers(); // Refresh display
   }
   
-  getShowTrackedSatelliteOnly(): boolean {
-    return this.showTrackedSatelliteOnly;
-  }
-
-
-  // Get satellite counts by type
-  getSatelliteCountsByType(): Record<string, number> {
-    const counts: Record<string, number> = {
-      'scientific': 0,
-      'communication': 0,
-      'earth-observation': 0,
-      'weather': 0,
-      'navigation': 0
-    };
-
-    for (const satellite of this.satellites.values()) {
-      if (counts.hasOwnProperty(satellite.type)) {
-        counts[satellite.type]++;
-      }
-    }
-
-    return counts;
-  }
-
-  // Satellite size control methods
-  increaseSatelliteSize() {
-    if (this.followingSatellite) {
-      this.trackedSatelliteSizeMultiplier = Math.min(this.trackedSatelliteSizeMultiplier * 1.25, this.MAX_SIZE_MULTIPLIER);
-      this.updateLayers(true);
-      const satellite = this.satellites.get(this.followingSatellite);
-      this.showMessage(`🔍 ${satellite?.name || 'Tracked satellite'} size: ${(this.trackedSatelliteSizeMultiplier * 100).toFixed(0)}%`, 'info');
-    } else {
-      this.showMessage(`🎯 Track a satellite first to resize it (search and click)`, 'warning');
-    }
-  }
-
-  decreaseSatelliteSize() {
-    if (this.followingSatellite) {
-      this.trackedSatelliteSizeMultiplier = Math.max(this.trackedSatelliteSizeMultiplier / 1.25, this.MIN_SIZE_MULTIPLIER);
-      this.updateLayers(true);
-      const satellite = this.satellites.get(this.followingSatellite);
-      this.showMessage(`🔍 ${satellite?.name || 'Tracked satellite'} size: ${(this.trackedSatelliteSizeMultiplier * 100).toFixed(0)}%`, 'info');
-    } else {
-      this.showMessage(`🎯 Track a satellite first to resize it (search and click)`, 'warning');
-    }
-  }
-
-  resetSatelliteSize() {
-    if (this.followingSatellite) {
-      this.trackedSatelliteSizeMultiplier = 1.0;
-      this.updateLayers(true);
-      const satellite = this.satellites.get(this.followingSatellite);
-      this.showMessage(`🔍 ${satellite?.name || 'Tracked satellite'} size reset to 100%`, 'info');
-    } else {
-      this.showMessage(`🎯 Track a satellite first to resize it (search and click)`, 'warning');
-    }
-  }
-
-  getSatelliteSizeMultiplier(): number {
-    return this.satelliteSizeMultiplier;
-  }
-
-  private setupKeyboardShortcuts() {
-    document.addEventListener('keydown', (e) => {
-      // Only respond to shortcuts if no input elements are focused and the settings panel is closed
-      if (document.activeElement?.tagName === 'INPUT' || document.querySelector('dialog[open]')) {
-        return;
-      }
-
-      switch (e.key) {
-        case 'ArrowUp':
-          if (e.shiftKey) {
-            e.preventDefault();
-            this.increaseSatelliteSize();
-          }
-          break;
-        
-        case 'ArrowDown':
-          if (e.shiftKey) {
-            e.preventDefault();
-            this.decreaseSatelliteSize();
-          }
-          break;
-        
-        case 'r':
-        case 'R':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            this.resetSatelliteSize();
-          }
-          break;
-        
-        case 'c':
-        case 'C':
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            this.toggleCockpit();
-          }
-          break;
-        
-      }
-    });
-
-    // Keyboard shortcuts enabled
-  }
-
-  private setupCockpitToggle() {
-    const showButton = document.getElementById('show-cockpit-btn');
-    
-    if (showButton) {
-      showButton.addEventListener('click', () => {
-        this.toggleCockpit();
-      });
-    }
-  }
-
-  toggleCockpit() {
-    this.isCockpitVisible = !this.isCockpitVisible;
-    const cockpitPanel = document.getElementById('cockpit-panel');
-    const showButton = document.getElementById('show-cockpit-btn');
-    
-    if (cockpitPanel && showButton) {
-      if (this.isCockpitVisible) {
-        cockpitPanel.classList.remove('hidden');
-        showButton.style.display = 'none';
-        this.showMessage('🎛️ Mission Control active', 'info');
-      } else {
-        cockpitPanel.classList.add('hidden');
-        showButton.style.display = 'flex';
-        this.showMessage('🎛️ Mission Control hidden - Press C to show', 'info');
-      }
-    }
-  }
-
-  isCockpitHidden(): boolean {
-    return !this.isCockpitVisible;
-  }
-
-  // Check if ultra-smooth tracking is active
-  isUltraSmoothTracking(): boolean {
-    return this.smoothTracker.isTracking() && this.smoothCamera.isTracking();
-  }
 
   stop() {
     if (this.animationId) {

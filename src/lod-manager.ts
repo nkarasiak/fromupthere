@@ -186,29 +186,6 @@ export class LODManager {
     return false;
   }
 
-  // Dynamic icon size based on LOD
-  getIconSize(satellite: SatelliteForLOD, zoom: number, baseSize: number): number {
-    const lodLevel = this.getLODLevel(zoom);
-    
-    // Size multipliers based on LOD level
-    const sizeMultipliers = {
-      'ultra-low': 0.3,
-      'low': 0.5,
-      'medium': 0.7,
-      'high': 1.0,
-      'ultra-high': 1.2
-    };
-
-    const multiplier = sizeMultipliers[lodLevel];
-    
-    // Special handling for ISS and followed satellites
-    if (satellite.id === 'iss-zarya' || satellite.isFollowed) {
-      return Math.max(baseSize * multiplier * 1.5, 12); // Always visible
-    }
-
-    return Math.max(baseSize * multiplier, 4); // Minimum size for visibility
-  }
-
   // Get circle size for satellites (much smaller than icons)
   getCircleSize(satellite: SatelliteForLOD, zoom: number, baseSize: number): number {
     const lodLevel = this.getLODLevel(zoom);
@@ -232,18 +209,4 @@ export class LODManager {
     return Math.max(baseSize * multiplier, 1); // Minimum 1 pixel dot
   }
 
-  // Get update priority for satellites
-  getUpdatePriority(satellite: SatelliteForLOD, zoom: number): 'high' | 'medium' | 'low' {
-    if (satellite.isFollowed || satellite.id === 'iss-zarya') {
-      return 'high';
-    }
-
-    const lodLevel = this.getLODLevel(zoom);
-    
-    if (lodLevel === 'ultra-high' || lodLevel === 'high') {
-      return 'medium';
-    }
-
-    return 'low';
-  }
 }

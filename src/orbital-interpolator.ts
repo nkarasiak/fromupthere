@@ -162,14 +162,4 @@ export class OrbitalInterpolator {
     }
   }
 
-  // Get the number of satellites being tracked
-  getTrackedSatelliteCount(): number {
-    return this.positionHistory.size;
-  }
-
-  // Check if we have enough data for smooth interpolation
-  canInterpolate(satelliteId: string): boolean {
-    const history = this.positionHistory.get(satelliteId);
-    return history ? history.length >= 2 : false;
-  }
 }

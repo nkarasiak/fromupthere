@@ -25,7 +25,6 @@ export class SmoothCamera {
   private map: MapLibreMap;
   private animationFrame: number | null = null;
   private isSmoothing = false;
-  private lastCameraState: CameraState;
   private targetPosition: PredictivePosition | null = null;
   
   // Smoothing parameters for video-like tracking
@@ -49,7 +48,6 @@ export class SmoothCamera {
 
   constructor(map: MapLibreMap) {
     this.map = map;
-    this.lastCameraState = this.getCurrentCameraState();
     
   }
 
@@ -153,15 +151,6 @@ export class SmoothCamera {
       pitch: currentState.pitch,
       bearing: newBearing // Use automatic bearing based on satellite direction
     });
-
-    // Update last known state
-    this.lastCameraState = {
-      center: newCenter,
-      zoom,
-      pitch: currentState.pitch,
-      bearing: newBearing,
-      timestamp: Date.now()
-    };
   }
 
   // Calculate adaptive smoothing factor based on satellite velocity
@@ -287,32 +276,6 @@ export class SmoothCamera {
     };
   }
 
-  // Animate to a specific camera target with easing
-  flyToTarget(target: CameraTarget, duration: number = 2000): Promise<void> {
-    return new Promise((resolve) => {
-      this.map.flyTo({
-        center: target.center,
-        zoom: target.zoom || this.map.getZoom(),
-        pitch: target.pitch || this.map.getPitch(),
-        bearing: target.bearing || this.map.getBearing(),
-        duration,
-        essential: true
-      });
-
-      setTimeout(resolve, duration);
-    });
-  }
-
-  // Enable/disable adaptive smoothing
-  setAdaptiveSmoothing(enabled: boolean): void {
-    this.adaptiveSmoothingEnabled = enabled;
-  }
-
-  // Enable/disable velocity-based prediction
-  setVelocityBasedSmoothing(enabled: boolean): void {
-    this.velocityBasedSmoothing = enabled;
-  }
-
   // Get current tracking status
   isTracking(): boolean {
     return this.isSmoothing && this.targetPosition !== null;
@@ -336,26 +299,6 @@ export class SmoothCamera {
     return this.userControlledBearing;
   }
 
-  getUserBearing(): number {
-    return this.userBearing;
-  }
-
-  // Get camera performance stats
-  getPerformanceStats(): {
-    tracking: boolean;
-    smoothingFactor: number;
-    targetPosition: PredictivePosition | null;
-    cameraState: CameraState;
-    userControlledBearing: boolean;
-  } {
-    return {
-      tracking: this.isTracking(),
-      smoothingFactor: this.calculateAdaptiveSmoothingFactor(),
-      targetPosition: this.targetPosition,
-      cameraState: this.lastCameraState,
-      userControlledBearing: this.userControlledBearing
-    };
-  }
 }
 
 // Zoom offset at latitude `lat` that keeps MapLibre's globe the size it has on screen at the equator

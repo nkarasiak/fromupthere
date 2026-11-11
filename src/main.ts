@@ -15,11 +15,10 @@ import { SEOManager } from './seo-manager';
 class SatelliteTracker3D {
   private map!: MapLibreMap;
   private satelliteTracker!: DeckSatelliteTracker;
-  private autoNightMode = false; // Auto switch based on satellite position
   private isGlobeMode = true; // Start with globe projection
   private urlState = new URLState();
   private commandPalette!: CommandPalette;
-  private nightShading?: { toggle(): boolean; setTime(ms: number | null): void };
+  private nightShading?: { setTime(ms: number | null): void };
   private searchComponent!: SearchComponent;
   private _cockpitComponent!: CockpitComponent;
   private initialZoom!: number;
@@ -122,9 +121,6 @@ class SatelliteTracker3D {
   }
 
   private addDayBasemap() {
-    // Remove night basemap if it exists
-    this.removeNightBasemap();
-    
     // Add Esri World Imagery as day basemap source and layer
     if (!this.map.getSource('esri-world-imagery')) {
       this.map.addSource('esri-world-imagery', {
@@ -162,15 +158,6 @@ class SatelliteTracker3D {
         // Esri's low-zoom bathymetry is a saturated teal; pull it toward the deep navy seen from orbit
         paint: { 'raster-saturation': -0.25, 'raster-contrast': 0.1, 'raster-fade-duration': 600 }
       }, this.getFirstSatelliteLayerId());
-    }
-  }
-
-  private removeNightBasemap() {
-    if (this.map.getLayer('nasa-night')) {
-      this.map.removeLayer('nasa-night');
-    }
-    if (this.map.getSource('nasa-night')) {
-      this.map.removeSource('nasa-night');
     }
   }
 
@@ -284,27 +271,11 @@ class SatelliteTracker3D {
 
   private setupEventListeners() {
 
-    // Handle night mode toggle from the new simplified cockpit
-    document.addEventListener('nightModeToggle', () => {
-      this.toggleBasemap();
-    });
-    
-    // Handle auto night mode toggle
-    document.addEventListener('autoNightModeToggle', () => {
-      this.toggleAutoNightMode();
-    });
-    
     // Add keyboard shortcut for projection toggle
     document.addEventListener('keydown', (e) => {
       // Only respond to shortcuts if no input elements are focused and the settings panel is closed (its Esc closes it)
       if (document.activeElement?.tagName === 'INPUT' || document.querySelector('dialog[open]')) {
         return;
-      }
-      
-      // Let deck-satellite-tracker handle Shift+Arrow keys for satellite resizing
-      if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-        console.log('Main.ts: Letting deck-satellite-tracker handle Shift+Arrow');
-        return; // Don't handle here, let deck-satellite-tracker handle it
       }
       
       if (e.key === 'g' || e.key === 'G') {
@@ -335,41 +306,12 @@ class SatelliteTracker3D {
           this.resetBearingToAutomatic();
         }
       }
-      
-      // N key to toggle auto night mode
-      if (e.key === 'n' || e.key === 'N') {
-        if (!e.ctrlKey && !e.metaKey) {
-          e.preventDefault();
-          this.toggleAutoNightMode();
-        }
-      }
     });
     
     
     // Add custom Ctrl+drag pitch handling that uses MapLibre directly
     this.setupCustomPitchControl();
   }
-
-  private toggleBasemap() {
-    const on = this.nightShading?.toggle();
-    this.showMessage(on ? '🌗 Day/night shading on' : '☀️ Day/night shading off', 'info');
-  }
-
-  private toggleAutoNightMode() {
-    this.autoNightMode = !this.autoNightMode;
-    if (this.autoNightMode) {
-      this.showMessage('🌍 Auto night mode enabled', 'info');
-      this.updateBasemapForSatellite(); // Update immediately
-    } else {
-      this.showMessage('🌍 Auto night mode disabled', 'info');
-    }
-  }
-
-  private updateBasemapForSatellite() {
-    // Day/night is one continuous globe: the terminator is drawn by the night-lights layer
-    // (see night-layer.ts), so there is no per-satellite basemap swap any more.
-  }
-
 
   private startTracking() {
     this.map.on('load', () => {
@@ -497,7 +439,6 @@ class SatelliteTracker3D {
       
       this.updateUI();
       setInterval(() => this.updateUI(), 1000); // HUD readouts: the ISS covers ~8 km every second
-      setInterval(() => this.updateBasemapForSatellite(), 5000); // Check for day/night changes
     });
   }
 

@@ -272,10 +272,4 @@ export class URLState {
     window.history.pushState({}, '', url.toString());
   }
 
-  navigateToHome() {
-    const url = new URL(window.location.href);
-    url.pathname = `${BASE}/`;
-    url.searchParams.delete('satellite');
-    window.history.pushState({}, '', url.toString());
-  }
 }

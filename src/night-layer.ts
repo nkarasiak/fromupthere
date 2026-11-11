@@ -141,12 +141,6 @@ export function installNightShading(map: MapLibreMap, beforeLayerId?: string) {
   setInterval(() => { if (override === null) apply(); }, NIGHT_REFRESH_MS);
 
   return {
-    /** Toggle the shading; returns whether it is now on. */
-    toggle(): boolean {
-      const on = map.getLayoutProperty(ids[0], 'visibility') === 'none';
-      ids.forEach(id => map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'));
-      return on;
-    },
     /** Follow a simulated clock (ms since epoch) instead of real time; null returns to real time. */
     setTime(ms: number | null) {
       override = ms;

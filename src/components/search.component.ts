@@ -352,11 +352,4 @@ export class SearchComponent {
     }
   }
 
-  clearSearchInput(): void {
-    const searchInput = document.getElementById('satellite-search') as HTMLInputElement;
-    if (searchInput) {
-      searchInput.value = '';
-      this.clearResults();
-    }
-  }
 }

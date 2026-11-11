@@ -17,8 +17,7 @@ const SHORTCUTS = [
   ['F', 'Fullscreen'],
   ['G', 'Globe / flat map'],
   ['B', 'Camera bearing back to automatic'],
-  ['Ctrl + drag', 'Tilt the camera'],
-  ['Shift ↑ ↓, R', 'Satellite picture size, reset']
+  ['Ctrl + drag', 'Tilt the camera']
 ];
 
 export function installSettings() {

@@ -99,20 +99,8 @@ export class PerformanceManager {
     return this.qualitySettings[this.adaptiveQuality as keyof typeof this.qualitySettings];
   }
 
-  getCurrentQuality(): string {
-    return this.adaptiveQuality;
-  }
-
-  getMetrics() {
-    return this.performanceMetrics;
-  }
-
   setSatelliteCount(count: number) {
     this.performanceMetrics.satelliteCount = count;
-  }
-
-  setRenderTime(time: number) {
-    this.performanceMetrics.renderTime = time;
   }
 
   // Get LOD skip factor based on zoom and quality
@@ -142,12 +130,6 @@ export class PerformanceManager {
     }
     
     return settings.updateInterval;
-  }
-
-  // Should render satellite icons based on performance
-  shouldRenderIcons(): boolean {
-    const settings = this.getQualitySettings();
-    return settings.iconQuality !== 'none';
   }
 
   // Get maximum number of satellites to render
