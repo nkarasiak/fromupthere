@@ -56,7 +56,7 @@ export const SATELLITE_CONFIGS: SatelliteConfig[] = [
   },
   {
     id: 'sentinel-2b',
-    alternateName: 'sennel-2b - MSI',
+    alternateName: 'sentinel-2b - MSI',
     image: 'static/images/esa_sentinel2.png'
   },
   {
