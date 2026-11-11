@@ -32,7 +32,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'deck-gl': ['@deck.gl/core', '@deck.gl/layers', '@deck.gl/geo-layers', '@deck.gl/aggregation-layers', '@deck.gl/mapbox'],
+          'deck-gl': ['@deck.gl/core', '@deck.gl/layers', '@deck.gl/extensions', '@deck.gl/aggregation-layers', '@deck.gl/mapbox'],
           'maplibre': ['maplibre-gl'],
           'satellite': ['satellite.js'],
         },

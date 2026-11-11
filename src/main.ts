@@ -5,6 +5,7 @@ import { globeZoomShift } from './smooth-camera';
 import { URLState } from './url-state';
 import { CommandPalette } from './command-palette';
 import { installNightShading } from './night-layer';
+import { installSettings } from './settings';
 import { CONSTELLATIONS, Constellation, constellationOf } from './config/satellites';
 import { SearchComponent } from './components/search.component';
 import { CockpitComponent } from './components/cockpit.component';
@@ -29,7 +30,8 @@ class SatelliteTracker3D {
   constructor() {
     this.initializeMap();
     this.satelliteTracker = new DeckSatelliteTracker(this.map);
-    this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateConstellationLink(); });
+    this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateSatelliteCard(); });
+    installSettings();
     this.satelliteTracker.setOnSatellitesLoadedCallback(() => {
       // Refresh command palette when satellites are loaded
       this.commandPalette?.refreshSatelliteList();
@@ -293,8 +295,8 @@ class SatelliteTracker3D {
     
     // Add keyboard shortcut for projection toggle
     document.addEventListener('keydown', (e) => {
-      // Only respond to shortcuts if no input elements are focused
-      if (document.activeElement?.tagName === 'INPUT') {
+      // Only respond to shortcuts if no input elements are focused and the settings panel is closed (its Esc closes it)
+      if (document.activeElement?.tagName === 'INPUT' || document.querySelector('dialog[open]')) {
         return;
       }
       
@@ -507,21 +509,32 @@ class SatelliteTracker3D {
     }
     setTimeout(() => { this.urlState.setInitializing(false); this.isInitializing = false; }, 3500);
     this.updateUI();
-    this.updateConstellationLink();
+    this.updateSatelliteCard();
   }
 
-  // "View <constellation>" button, shown while tracking a satellite that belongs to one
-  private updateConstellationLink() {
-    let btn = document.getElementById('constellation-link') as HTMLButtonElement | null;
-    const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
-    if (!group) { btn?.remove(); return; }
-    if (!btn) {
-      btn = document.createElement('button');
-      btn.id = 'constellation-link';
-      document.body.appendChild(btn);
+  // Card at the bottom left while tracking: the satellite's picture (the globe shows a dot, see settings.ts) and, for a
+  // member of a constellation, a "View <constellation>" button
+  private updateSatelliteCard() {
+    const id = this.satelliteTracker.getFollowingSatellite();
+    const sat = id ? this.satelliteTracker.getSatellites().get(id) : undefined;
+    const group = constellationOf(id);
+    document.getElementById('sat-card')?.remove();
+    if (!sat?.image && !group) return;
+    const card = document.createElement('div');
+    card.id = 'sat-card';
+    if (sat?.image) {
+      const img = new Image();
+      img.src = sat.image;
+      img.alt = displayName(sat);
+      card.append(img);
     }
-    btn.textContent = `🌐 View ${group.name} constellation`;
-    btn.onclick = () => this.openConstellation(group, true);
+    if (group) {
+      const btn = document.createElement('button');
+      btn.textContent = `🌐 View ${group.name} constellation`;
+      btn.onclick = () => this.openConstellation(group, true);
+      card.append(btn);
+    }
+    document.body.appendChild(card);
   }
 
   private updateURL() {

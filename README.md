@@ -105,7 +105,7 @@ npm run preview
 ### Key Libraries
 - **@deck.gl/core** - 3D rendering engine
 - **@deck.gl/layers** - Visualization layers (ScatterplotLayer, IconLayer)
-- **@deck.gl/geo-layers** - Geographic data layers
+- **@deck.gl/extensions** - GPU data filter (swath age fade)
 - **@luma.gl/core** - WebGL abstraction
 
 ### Architecture Highlights

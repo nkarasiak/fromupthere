@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🛰️ Tracking view
 - **Real altitude**: the tracked satellite is drawn inside MapLibre's globe (like the constellation view) at its real height, not ~0.5 km above the ground. Imagers get a sensor cone down to a scan line that follows the ground; other satellites a plumb line. Satellites without a picture get a crisp vector dot in their constellation's colour; pictures are half their former size and keep it over the poles.
 - **Swath**: painted behind the satellite over the last 20 min, fading with age. Built from cross-track arcs along the ground, so it meets the scan line exactly even for MODIS-wide swaths; dims with the light to a faint trace where it's dark (no imaging); stays on top of 3D relief and stops at the horizon.
+- **Satellite as a dot** in its constellation's colour, like the constellation view; its picture moves to a card at the bottom left, with the "View constellation" button. The picture on the globe is a setting.
 - **Speed ×1 / ×10 / ×100 / ×300** in the banner, with ⟲ back to live: the simulated clock drives the satellite, swath, day/night and the banner clock ("Sim UTC").
 - **Camera**: zoom follows latitude so the globe keeps its size near the poles (the satellite no longer leaves the screen; `zoom=` in the URL stays the equator value). Exact position and ground-track heading every frame: no more camera jolts every 15 s, no jitter at ×100.
 
@@ -19,13 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Swaths that match the real geometry**: each satellite flies at its real altitude on its orbit ring, tied by a translucent sensor cone to both ends of the scan line it is imaging; its footprint (bright for the last 4 min, faint for the last 90 min) is cut and faded on the GPU so it moves smoothly. Optical swaths are drawn only in daylight (sun ≥ 10° at nadir); Sentinel-1 (radar) images day and night. One faint orbit ring per orbital plane.
 - Rendered by a deck.gl `MapboxOverlay` inside MapLibre's globe (the flat overlay cannot sit correctly on the globe at whole-Earth zoom); the far side is hidden by the Earth.
 - **43 constellations** (was 4): public EO (Sentinel-1/2/3, Landsat, EarthDaily, MODIS, VIIRS, MetOp, Fengyun-3, CBERS), commercial optical (Planet SuperDove/SkySat/Pelican, Maxar, Pléiades, SPOT, BlackSky, Satellogic, Jilin-1, SuperView, KOMPSAT), SAR (ICEYE, Capella, Umbra, COSMO-SkyMed, TerraSAR-X/PAZ, RCM, SAOCOM, ALOS, StriX, iQPS) and non-imagers (OneWeb, Kuiper, Qianfan, Iridium, Globalstar, ORBCOMM, Spire, GPS, Galileo, GLONASS, BeiDou, geostationary weather). Members are found by name, not listed: several CelesTrak name queries per constellation, a pattern on the satellite id to drop unrelated matches, and only satellites SATCAT marks operational, so launches join and dead satellites (e.g. 60 of 96 Globalstars) leave on their own. Cached 6 h.
-- Non-imagers have no swath or sensor cone and are seen face-on to their orbit plane (tilted ≤ 30°), so the geostationary belt is a ring round the Earth; the zoom fits navigation and geostationary orbits, and MapLibre's far plane is moved behind them so their far side isn't clipped.
+- **Opens on the day side with the equator at the centre**: imagers over their orbit's daylit equator crossing (ground track still vertical), non-imagers face-on to their orbit plane from its sunlit side.
+- **Swaths follow the Earth's curvature**: scan line, cone base and every swath row are arcs along the ground, so the cone ends exactly on the swath's leading edge (VIIRS/MODIS swaths were flat ribbons standing ~180 km off the surface at the limb). Swath quads are built once per 30 min chunk and faded by age on the GPU (`DataFilterExtension`, replacing `TripsLayer` and `@deck.gl/geo-layers`).
+- Non-imagers have no swath or sensor cone; low-inclination belts are seen from 30° north, so the geostationary belt is a ring round the Earth; the zoom fits navigation and geostationary orbits, and MapLibre's far plane is moved behind them so their far side isn't clipped.
 - **EarthDaily naming**: EDC-01 to EDC-08 = YAM-10 to YAM-17 (verified by COSPAR designator); `/edc-03` URLs resolve to the right satellite.
 
 ### 🌗 Day / night
 - One continuous globe: NASA VIIRS city lights are faded in over the day imagery by the sun's elevation at every pixel (soft twilight terminator), replacing the per-satellite basemap swap. Accurate sun position (equation of time included). Follows the simulated clock in the time-lapse.
 
+### ⚙️ Settings
+- **`?` (or `H`) opens a settings panel**, kept in this browser: constellation time-lapse speed (default ×100), satellite picture on the globe instead of a dot, and the keyboard shortcuts (replaces the 5 s help popup).
+
 ### 🔧 Fixes
+- Night side blinked every few seconds during the time-lapse: the day/night buffers cross-faded through ~50 % opacity, letting the day imagery through. They now swap instantly.
 - Search palette lists at once (ISS first and preselected, then Sentinel-2, Sentinel-1, Landsat, EarthDaily) instead of staying empty until the full catalogue downloads.
 - Satellite search palette no longer empty when CelesTrak rate-limits the full catalogue (403): falls back to known satellites and name queries; selecting loads the satellite on demand.
 - Deep links to any satellite load a single targeted CelesTrak query (cached) instead of the 47k-line `active` file.
