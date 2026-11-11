@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🛰️ Tracking view
+- **Real altitude**: the tracked satellite is drawn inside MapLibre's globe (like the constellation view) at its real height, not ~0.5 km above the ground. Imagers get a sensor cone down to a scan line that follows the ground; other satellites a plumb line. Satellites without a picture get a crisp vector dot in their constellation's colour; pictures are half their former size and keep it over the poles.
+- **Swath**: painted behind the satellite over the last 20 min, fading with age. Built from cross-track arcs along the ground, so it meets the scan line exactly even for MODIS-wide swaths; dims with the light to a faint trace where it's dark (no imaging); stays on top of 3D relief and stops at the horizon.
+- **Speed ×1 / ×10 / ×100 / ×300** in the banner, with ⟲ back to live: the simulated clock drives the satellite, swath, day/night and the banner clock ("Sim UTC").
+- **Camera**: zoom follows latitude so the globe keeps its size near the poles (the satellite no longer leaves the screen; `zoom=` in the URL stays the equator value). Exact position and ground-track heading every frame: no more camera jolts every 15 s, no jitter at ×100.
+
 ### 🌐 Constellation view
 - **`?group=<id>` overview** (e.g. `edc`, `sentinel-2`, `iceye`, `gps`): every satellite of a constellation at once, on its real orbit. The orbit is seen edge-on over its daylit pass, so the ground track runs down the middle of a globe that fills the screen. Reachable from the search palette (`/`) and a "View constellation" button on member satellites. Click a satellite to track it.
 - **Time-lapse**: the camera is fixed in inertial space so the Earth visibly turns under the ring while satellites run round it and paint their swath (EarthDaily 240 km) onto the surface. Play/pause, speed (one value: a click steps ×1 → ×10 → ×100 → ×300) and restart live in the top banner, laid out like the single-satellite one (Date · Sim UTC · constellation · Sats · Speed); its clock shows the simulated time, so only one clock is on screen.
@@ -28,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multisampling enabled on the map canvas (aliasing).
 - Swaths no longer lag their satellite or appear where none flew (deck re-cut globe paths without their per-vertex timestamps/colours).
 - MapLibre 5.24: no more tile explosion (2 fps) on the globe at high pitch.
+- Sentinel-2B showed as "sennel-2b - MSI".
+- Switching from a constellation to one of its satellites no longer draws the satellite at the time-lapse's simulated position for the first seconds.
 - Overlapping satellite labels: the farther of two overlapping labels fades out (a far label's text printed through a near label's box), and dots are drawn above labels so none is hidden.
 - Constellation time-lapse holds 60 fps at ×300: no per-frame forced layout (cached map height), the empty flat overlay is no longer redrawn and composited, night tiles re-render at most every 3 s of real time.
 - Constellation view keeps `pitch` from the URL on reload.
