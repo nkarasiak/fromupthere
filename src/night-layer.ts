@@ -133,7 +133,8 @@ export function installNightShading(map: MapLibreMap, beforeLayerId?: string) {
     map.addSource(id, { type: 'raster', tiles: tiles(applied), tileSize: 256, minzoom: 0, maxzoom: 8 });
     map.addLayer({
       id, type: 'raster', source: id,
-      paint: { 'raster-opacity': i === front ? 1 : 0, 'raster-opacity-transition': { duration: 300, delay: 0 }, 'raster-fade-duration': 0 }
+      // no opacity transition: a cross-fade puts both buffers near 0.5 mid-swap, so the day imagery flashes through the night side
+      paint: { 'raster-opacity': i === front ? 1 : 0, 'raster-opacity-transition': { duration: 0, delay: 0 }, 'raster-fade-duration': 0 }
     }, beforeLayerId);
   });
   map.setLight(sunLight(applied));
