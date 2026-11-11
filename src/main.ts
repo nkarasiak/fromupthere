@@ -30,8 +30,9 @@ class SatelliteTracker3D {
   constructor() {
     this.initializeMap();
     this.satelliteTracker = new DeckSatelliteTracker(this.map);
-    this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateSatelliteCard(); });
+    this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateConstellationSlot(); });
     installSettings();
+    this.installTimePicker();
     this.satelliteTracker.setOnSatellitesLoadedCallback(() => {
       // Refresh command palette when satellites are loaded
       this.commandPalette?.refreshSatelliteList();
@@ -509,32 +510,55 @@ class SatelliteTracker3D {
     }
     setTimeout(() => { this.urlState.setInitializing(false); this.isInitializing = false; }, 3500);
     this.updateUI();
-    this.updateSatelliteCard();
+    this.updateConstellationSlot();
   }
 
-  // Card at the bottom left while tracking: the satellite's picture (the globe shows a dot, see settings.ts) and, for a
-  // member of a constellation, a "View <constellation>" button
-  private updateSatelliteCard() {
-    const id = this.satelliteTracker.getFollowingSatellite();
-    const sat = id ? this.satelliteTracker.getSatellites().get(id) : undefined;
-    const group = constellationOf(id);
-    document.getElementById('sat-card')?.remove();
-    if (!sat?.image && !group) return;
-    const card = document.createElement('div');
-    card.id = 'sat-card';
-    if (sat?.image) {
-      const img = new Image();
-      img.src = sat.image;
-      img.alt = displayName(sat);
-      card.append(img);
-    }
-    if (group) {
-      const btn = document.createElement('button');
-      btn.textContent = `🌐 View ${group.name} constellation`;
-      btn.onclick = () => this.openConstellation(group, true);
-      card.append(btn);
-    }
-    document.body.appendChild(card);
+  // Click the banner clock (or the time-lapse date) to pick the simulated date and time, in UTC like the clock.
+  // A native popover with a datetime-local field: Enter or Go jumps there, Now goes back to the present.
+  private installTimePicker() {
+    const DAY = 24 * 3600e3, RANGE = 30 * DAY; // ponytail: TLEs drift by tens of km a month from their epoch; widen with archived TLEs
+    const pop = document.createElement('form');
+    pop.id = 'time-picker';
+    pop.popover = 'auto';
+    pop.innerHTML = `<label>Date and time (UTC) <input type="datetime-local" step="1" required></label>
+      <div><button type="button" value="now">Now</button><button>Go</button></div>`;
+    document.body.appendChild(pop);
+    const input = pop.querySelector('input')!;
+    const iso = (t: number) => new Date(t).toISOString().slice(0, 19);
+    pop.onsubmit = e => {
+      e.preventDefault();
+      const t = Date.parse(input.value + 'Z');
+      if (Number.isNaN(t)) return;
+      this.satelliteTracker.setSimTime(t);
+      pop.hidePopover();
+    };
+    pop.querySelector<HTMLButtonElement>('button[value=now]')!.onclick = () => {
+      this.satelliteTracker.setSimTime(null);
+      pop.hidePopover();
+    };
+    document.getElementById('banner-display')!.addEventListener('click', e => {
+      if (!(e.target as Element).closest('#utc-item, #tl-date-item')) return;
+      input.min = iso(Date.now() - RANGE);
+      input.max = iso(Date.now() + RANGE);
+      input.value = iso(this.satelliteTracker.clockNow());
+      pop.showPopover();
+      input.focus();
+    });
+  }
+
+  // While tracking a member of a constellation, the banner names it: a click opens the constellation
+  private updateConstellationSlot() {
+    document.querySelectorAll('.group-slot').forEach(e => e.remove());
+    const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
+    if (!group) return;
+    const t = document.createElement('template');
+    t.innerHTML = `<div class="banner-item banner-extra group-slot"><span class="banner-label">Constellation</span>
+      <button class="banner-value" title="View the ${group.name} constellation"></button></div>
+      <div class="banner-separator banner-extra group-slot"></div>`;
+    const btn = t.content.querySelector('button')!;
+    btn.textContent = group.name;
+    btn.onclick = () => this.openConstellation(group, true);
+    document.querySelector('#banner-display .banner-left')!.prepend(...Array.from(t.content.children)); // the left has room
   }
 
   private updateURL() {

@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🛰️ Tracking view
 - **Real altitude**: the tracked satellite is drawn inside MapLibre's globe (like the constellation view) at its real height, not ~0.5 km above the ground. Imagers get a sensor cone down to a scan line that follows the ground; other satellites a plumb line. Satellites without a picture get a crisp vector dot in their constellation's colour; pictures are half their former size and keep it over the poles.
 - **Swath**: painted behind the satellite over the last 20 min, fading with age. Built from cross-track arcs along the ground, so it meets the scan line exactly even for MODIS-wide swaths; dims with the light to a faint trace where it's dark (no imaging); stays on top of 3D relief and stops at the horizon.
-- **Satellite as a dot** in its constellation's colour, like the constellation view; its picture moves to a card at the bottom left, with the "View constellation" button. The picture on the globe is a setting.
+- **Satellite as a dot** in its constellation's colour, like the constellation view (its picture is a setting). No plumb line under non-imagers. The banner names the constellation ("Constellation MODIS"); a click opens it (replaces the floating "View constellation" button).
+- **Pick the date and time**: click the banner clock (or the Date in a constellation) for a UTC date/time field, ±30 days around today; Now goes back to the present.
+- **Clock carried between views**: clicking a satellite in a time-lapse keeps its simulated time and speed (it reset to live ×1 without notice); opening a constellation from a satellite in time-lapse continues that clock.
 - **Speed ×1 / ×10 / ×100 / ×300** in the banner, with ⟲ back to live: the simulated clock drives the satellite, swath, day/night and the banner clock ("Sim UTC").
 - **Camera**: zoom follows latitude so the globe keeps its size near the poles (the satellite no longer leaves the screen; `zoom=` in the URL stays the equator value). Exact position and ground-track heading every frame: no more camera jolts every 15 s, no jitter at ×100.
 

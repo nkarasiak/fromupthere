@@ -529,6 +529,8 @@ export class DeckSatelliteTracker {
       return false;
     }
 
+    // From a satellite in time-lapse, carry on with its clock (time and speed); from live tracking, start now at the default speed
+    const fromTrack = this.followingSatellite && !this.trackLive ? { t: this.simNow(), speed: this.trackSpeed } : null;
     this.stopSimpleTracking();
     this.smoothTracker.stopTracking();
     this.smoothCamera.stopSmoothTracking();
@@ -546,7 +548,7 @@ export class DeckSatelliteTracker {
     // the screen. The plane is the one most members share; others (e.g. EDC-01) cross it.
     const sats = ids.map(id => this.satellites.get(id)!);
     const rad = Math.PI / 180;
-    const nowDate = new Date();
+    const nowDate = new Date(fromTrack?.t ?? Date.now());
     const gmst = satellite.gstime(nowDate);
     const normals: number[][] = [];
     let orbitR = 1; // the highest satellite's distance from the Earth's centre, in Earth radii
@@ -623,7 +625,7 @@ export class DeckSatelliteTracker {
     // Time-lapse: starts playing right after the fly-in
     this.tlGmst = gmst;
     this.tlPlaying = true;
-    this.tlSpeed = settings.speed;
+    this.tlSpeed = fromTrack?.speed ?? settings.speed;
     this.anchorTimelapse(nowDate.getTime());
     this.buildTimelapseControls();
     cancelAnimationFrame(this.tlRaf);
@@ -691,7 +693,7 @@ export class DeckSatelliteTracker {
       ? '<rect x="2" y="1" width="3" height="10" rx="1"/><rect x="7" y="1" width="3" height="10" rx="1"/>'
       : '<path d="M3 1.5v9a.5.5 0 0 0 .77.42l7-4.5a.5.5 0 0 0 0-.84l-7-4.5A.5.5 0 0 0 3 1.5z"/>'}</svg>`;
     bar.querySelector('.banner-left')!.prepend(...slots(` // date first, then the time
-      <div class="banner-item banner-extra"><span class="banner-label">Date</span><span class="banner-value" id="tl-date"></span></div>
+      <div class="banner-item banner-extra" id="tl-date-item" title="Set the date and time"><span class="banner-label">Date</span><span class="banner-value" id="tl-date"></span></div>
       <div class="banner-separator banner-extra"></div>`));
     bar.querySelector('.banner-right')!.append(...slots(`
       <div class="banner-separator banner-extra"></div>
@@ -2060,8 +2062,7 @@ export class DeckSatelliteTracker {
     while (ka > 0 && seen(ka - 1)) ka--;
     while (kb < n - 1 && seen(kb + 1)) kb++;
 
-    // Down to the ground: a sensor cone to the scan line across the track (imagers), or a plumb line
-    const ground = [sat[0], sat[1], 0];
+    // Imagers: a sensor cone down to the scan line across the track
     const prev = this.calculateSatellitePosition(s.tle1, s.tle2, s.id, new Date(now - 5000));
     const heading = p?.bearing ?? bearingDeg([prev.longitude, prev.latitude], sat);
     // Swath half-width drawn: the real one, but at least ~1.5 px so a 5 km swath stays visible zoomed out
@@ -2114,11 +2115,11 @@ export class DeckSatelliteTracker {
           getPath: (d: any) => d, positionFormat: 'XYZ', getColor: [255, 255, 255, 230], getWidth: 2.5, widthUnits: 'pixels'
         })
       ] : []),
-      new LineLayer({ // plumb line (cone edges for an imager)
-        id: 'tracked-down', data: scan ? [{ a: sat, b: scan[0] }, { a: sat, b: scan[1] }] : [{ a: sat, b: ground }],
+      ...(scan ? [new LineLayer({ // the cone's edges (a non-imager has no line down: it isn't looking at anything)
+        id: 'tracked-down', data: [{ a: sat, b: scan[0] }, { a: sat, b: scan[1] }],
         parameters: lines, updateTriggers: { getSourcePosition: f, getTargetPosition: f },
         getSourcePosition: (d: any) => d.a, getTargetPosition: (d: any) => d.b, getColor: [r, g, b, 160], getWidth: 1, widthUnits: 'pixels'
-      }),
+      })] : []),
       ...(icon ? [
         new IconLayer({
           id: 'tracked-icon', data: [{ position: sat }], parameters: onTop, updateTriggers: { getPosition: f, getSize: f },
@@ -2253,9 +2254,7 @@ export class DeckSatelliteTracker {
 
 
   followSatellite(satelliteId: string, preserveZoom: boolean = false, explicitZoom?: number) {
-    this.clearConstellation();
-    this.resetTrackClock();
-    this.buildTrackSpeedControls();
+    this.startTrackClock();
     this.followingSatellite = satelliteId;
     // Reset tracked satellite size when following a new satellite
     this.trackedSatelliteSizeMultiplier = 1.0;
@@ -2277,7 +2276,7 @@ export class DeckSatelliteTracker {
       
       this.smoothCamera.setUserControlledBearing(false); // a new satellite starts in automatic bearing
       const pitch = satellite.defaultPitch ?? DEFAULT_PITCH;
-      const end = this.trackingCamera(satellite, Date.now() + 2000);
+      const end = this.trackingCamera(satellite, this.simNow() + 2000 * this.trackSpeed);
 
       // Calculate appropriate zoom for this altitude
       let adjustedZoom;
@@ -2323,12 +2322,42 @@ export class DeckSatelliteTracker {
     return this.trackLive ? Date.now() : this.trackSimT0 + (performance.now() - this.trackRealT0) * this.trackSpeed;
   }
 
-  private setTrackSpeed(speed: number) {
-    this.trackSimT0 = this.simNow();
+  private setTrackTime(t: number) {
+    this.trackSimT0 = t;
     this.trackRealT0 = performance.now();
-    this.trackSpeed = this.smoothCamera.speed = speed;
     this.trackLive = false;
     document.getElementById('utc-label')!.textContent = 'Sim UTC';
+  }
+
+  private setTrackSpeed(speed: number) {
+    this.setTrackTime(this.simNow());
+    this.trackSpeed = this.smoothCamera.speed = speed;
+  }
+
+  // Tracking starts live, except from a constellation: it keeps the time-lapse's clock (time and speed), so the
+  // satellite clicked is where it was and nothing changes speed behind the user's back
+  private startTrackClock() {
+    const tl = this.constellation ? { t: this.tlSim, speed: this.tlSpeed } : null;
+    this.clearConstellation();
+    this.resetTrackClock();
+    if (tl) {
+      this.setTrackTime(tl.t);
+      this.trackSpeed = this.smoothCamera.speed = tl.speed;
+    }
+    this.buildTrackSpeedControls();
+  }
+
+  /** Jump the clock of the current view to t (ms since epoch); null = now (tracking: back to live). */
+  setSimTime(t: number | null) {
+    if (this.constellation) return this.anchorTimelapse(t ?? Date.now());
+    if (t === null) this.resetTrackClock();
+    else this.setTrackTime(t);
+    this.buildTrackSpeedControls(); // the speed shown
+  }
+
+  /** The current view's clock (ms since epoch). */
+  clockNow(): number {
+    return this.constellation ? this.tlSim : this.simNow();
   }
 
   private resetTrackClock() {
@@ -2367,9 +2396,7 @@ export class DeckSatelliteTracker {
   }
 
   followSatelliteWithAnimation(satelliteId: string, targetZoom: number, targetPitch: number) {
-    this.clearConstellation();
-    this.resetTrackClock();
-    this.buildTrackSpeedControls();
+    this.startTrackClock();
     this.followingSatellite = satelliteId;
     // Reset tracked satellite size when following a new satellite
     this.trackedSatelliteSizeMultiplier = 1.0;
@@ -2385,7 +2412,7 @@ export class DeckSatelliteTracker {
       // Reset bearing to automatic mode when starting new satellite tracking
       this.smoothCamera.setUserControlledBearing(false);
       
-      const end = this.trackingCamera(satellite, Date.now() + FLY_DURATION_MS);
+      const end = this.trackingCamera(satellite, this.simNow() + FLY_DURATION_MS * this.trackSpeed);
 
       // Clamp zoom to valid range to prevent tile errors
       const validZoom = Math.max(0, Math.min(25, targetZoom + globeZoomShift(end.center[1]))); // equator-equivalent zoom
