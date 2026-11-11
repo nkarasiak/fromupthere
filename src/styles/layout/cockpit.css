@@ -1,161 +1,72 @@
-/* Modern corner indicators */
-.corner-bracket {
-  position: absolute;
-  width: 30px;
-  height: 30px;
-  z-index: 600;
-  pointer-events: none;
-  opacity: 0.4;
-}
-
-.corner-bracket.top-left {
-  top: 24px;
-  left: 24px;
-  border-left: 2px solid #ffffff;
-  border-top: 2px solid #ffffff;
-  border-radius: 4px 0 0 0;
-}
-
-.corner-bracket.top-right {
-  top: 24px;
-  right: 24px;
-  border-right: 2px solid #ffffff;
-  border-top: 2px solid #ffffff;
-  border-radius: 0 4px 0 0;
-}
-
-.corner-bracket.bottom-left {
-  bottom: 220px;
-  left: 24px;
-  border-left: 2px solid #ffffff;
-  border-bottom: 2px solid #ffffff;
-  border-radius: 0 0 0 4px;
-}
-
-.corner-bracket.bottom-right {
-  bottom: 220px;
-  right: 24px;
-  border-right: 2px solid #ffffff;
-  border-bottom: 2px solid #ffffff;
-  border-radius: 0 0 4px 0;
-}
-
-/* Simple Top Banner */
+/* Top: what on the left (a map title), when on the right. Plain text over the map: no bar, no boxes.
+   One size everywhere (13 px); weight and colour set the hierarchy. */
 #cockpit-panel {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  min-height: 40px;
-  padding-top: 5px;
-  padding-bottom: 5px;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   z-index: 1000;
+  display: flex;
+  flex-wrap: wrap; /* phones: "when" drops under "what" */
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px 24px;
+  padding: 14px 20px;
+  pointer-events: none; /* the empty middle belongs to the map */
+  font: 500 13px/1.3 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #e6e6e6;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+#top-what, #top-when {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
   pointer-events: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 20px;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
-  transition: all 0.4s ease-in-out;
 }
-
-/* Top Banner Layout */
-#banner-display {
-  display: flex;
-  flex-direction: column; /* the name, and under it its constellation or the constellation's size */
-  align-items: center;
-  gap: 3px;
-  font-size: 13px;
-  color: #ffffff;
-}
-
-/* Banner Info Block */
-.banner-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.banner-item.tracking {
+#top-what { gap: 8px; }
+#top-when { gap: 2px; }
+#cockpit-panel button {
+  font: inherit;
+  color: inherit;
+  text-shadow: inherit;
+  background: none;
+  border: 0;
+  padding: 4px 6px;
   cursor: pointer;
-  padding: 6px 12px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: color 0.2s;
 }
+#cockpit-panel button:hover { color: #00ffaa; }
+#cockpit-panel button:focus-visible { outline: 1px solid rgba(0, 212, 255, 0.6); border-radius: 4px; }
 
-.banner-item.tracking:hover {
-  background: rgba(0, 150, 255, 0.15);
-  border-color: rgba(0, 150, 255, 0.3);
-  transform: translateY(-1px);
-}
+/* What: constellation › satellite (click: search), a constellation's size, the satellite's figures */
+.banner-item.tracking { cursor: pointer; }
+.tracking-name { color: #fff; font-weight: 600; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
+.banner-item.tracking:hover .tracking-name { color: #00d4ff; }
+#tracked-parent { display: flex; align-items: center; gap: 8px; }
+#tracked-parent:empty { display: none; }
+#tracked-parent button { padding: 0; color: #a8a8a8; }
+#tracked-parent span, #tracked-count { color: #777; }
+.sat-figures { display: none; gap: 12px; margin-left: 8px; font-variant-numeric: tabular-nums; }
+body.tracking-mode .sat-figures { display: flex; }
+.banner-unit { color: #9a9a9a; }
 
-/* Banner Labels and Values */
-.banner-label {
-  color: #aaaaaa;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
+/* When: date and time (click: set them), then play / speed / back to now */
+#time-set { font-variant-numeric: tabular-nums; }
+#tl-play, #tl-reset { display: flex; align-items: center; color: #9a9a9a !important; padding: 6px 7px !important; }
+#tl-play:hover, #tl-reset:hover { color: #fff !important; }
+#tl-speed { min-width: 3em; color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+.top-sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.25); margin: 0 6px; }
 
-.banner-value {
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.banner-unit {
-  color: #aaaaaa;
-  font-size: 11px;
-  margin-left: 2px;
-}
-
-
-/* Tracking Name Styling */
-.tracking-name {
-  color: #00d4ff;
-  font-weight: 600;
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Live-tracking indicator */
-.tracking-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #3ddc84;
-  box-shadow: 0 0 6px #3ddc84;
-  animation: tracking-pulse 2s ease-in-out infinite;
-}
-
-@keyframes tracking-pulse {
-  50% { opacity: 0.35; }
-}
-
-/* Readouts: fixed-width digits so values don't jitter as they tick */
-.banner-value {
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.2px;
+/* Phones: no date, just the time */
+@media (max-width: 640px) {
+  #cockpit-panel { padding: 10px 12px; }
+  #tl-date { display: none; }
 }
 
 /* Transient status messages */
 .toast {
   position: fixed;
-  top: 56px;
+  top: 64px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2000;
@@ -178,76 +89,3 @@
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -6px); } }
 @keyframes toast-out { to { opacity: 0; } }
 
-/* Label and value share a text baseline (centring them put a 13 px value 3 px above its 11 px label) */
-.banner-item:has(> .banner-label) {
-  align-items: baseline;
-}
-
-/* Clock and date: lighter than the other values, as they change constantly */
-#utc-clock, #tl-date {
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  color: #ddd;
-}
-
-/* Under the name: the constellation (a quiet link) or the constellation's size */
-#tracked-sub { font-size: 11px; color: #999; line-height: 1.2; }
-#tracked-sub:empty { display: none; }
-#tracked-sub button { font: inherit; color: #bbb; background: none; border: 0; padding: 0; cursor: pointer; transition: color 0.2s; }
-#tracked-sub button:hover { color: #00ffaa; }
-
-/* Bottom panels: the time bar (centre) and the tracked satellite's figures (left), styled like the top bar */
-#timebar, #sat-hud {
-  position: fixed;
-  bottom: 16px;
-  z-index: 20;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  font-family: 'Inter', sans-serif;
-}
-#timebar {
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px;
-}
-#timebar button {
-  font: inherit;
-  font-size: 13px;
-  color: #888;
-  background: none;
-  border: 0;
-  border-radius: 6px;
-  padding: 5px 7px;
-  cursor: pointer;
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  transition: color 0.2s, background 0.2s;
-}
-#timebar button:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
-#timebar button:focus-visible { outline: 1px solid rgba(0, 212, 255, 0.6); }
-#tl-speed { min-width: 3.4em; justify-content: center; color: #fff !important; font-weight: 600; font-variant-numeric: tabular-nums; }
-.timebar-sep { width: 1px; height: 18px; background: rgba(255, 255, 255, 0.15); margin: 0 4px; }
-#time-set { color: #ddd !important; white-space: nowrap; }
-#time-set:hover #utc-clock, #time-set:hover #tl-date { color: #00ffaa; }
-
-#sat-hud {
-  left: 16px;
-  display: none; /* only while tracking a satellite */
-  grid-template-columns: auto auto;
-  gap: 4px 12px;
-  align-items: baseline;
-  padding: 10px 14px;
-}
-body.tracking-mode #sat-hud { display: grid; }
-
-/* Narrow screens: the figures sit above the time bar */
-@media (max-width: 640px) {
-  #sat-hud { bottom: 72px; }
-}

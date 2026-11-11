@@ -486,19 +486,23 @@ class SatelliteTracker3D {
     });
   }
 
-  // Under the name in the top bar: a tracked satellite's constellation (a click opens it), or a constellation's size
+  // Around the name in the dock: a tracked satellite's constellation before it, as a breadcrumb (a click opens the
+  // constellation), or a constellation's size after it
   private updateConstellationSlot() {
-    const sub = document.getElementById('tracked-sub')!;
-    sub.textContent = '';
+    const parent = document.getElementById('tracked-parent')!, count = document.getElementById('tracked-count')!;
+    parent.textContent = count.textContent = '';
     const n = this.satelliteTracker.getConstellationSize();
-    if (n) { sub.textContent = `${n} satellite${n > 1 ? 's' : ''}`; return; }
+    if (n) { count.textContent = `· ${n}`; count.title = `${n} satellite${n > 1 ? 's' : ''}`; return; }
     const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
     if (!group) return;
     const btn = document.createElement('button');
-    btn.textContent = `${group.name} ›`;
+    btn.textContent = group.name;
     btn.title = `View the ${group.name} constellation`;
     btn.onclick = () => this.openConstellation(group, true);
-    sub.append(btn);
+    const sep = document.createElement('span');
+    sep.textContent = '›';
+    sep.setAttribute('aria-hidden', 'true');
+    parent.append(btn, sep);
   }
 
   private updateURL() {
@@ -708,7 +712,6 @@ class SatelliteTracker3D {
     const trackedAltitudeElement = document.getElementById('tracked-altitude');
     const trackedNameElement = document.getElementById('tracked-name');
     const trackedSpeedElement = document.getElementById('tracked-speed');
-    const trackedPositionElement = document.getElementById('tracked-position');
     
     // Update search component with current following satellite
     this.searchComponent?.setFollowingSatellite(followingSatellite);
@@ -729,7 +732,7 @@ class SatelliteTracker3D {
       }
     }
     
-    // The satellite's figures (bottom left) only while tracking one
+    // The satellite's figures (in the dock) only while tracking one
     const constellation = this.satelliteTracker.getConstellationName();
     document.body.classList.toggle('tracking-mode', !constellation && !!followingSatellite);
     if (constellation) {
@@ -740,20 +743,15 @@ class SatelliteTracker3D {
         if (trackedAltitudeElement) trackedAltitudeElement.textContent = trackedSatellite.altitude.toFixed(0);
         if (trackedNameElement) trackedNameElement.textContent = displayName(trackedSatellite);
         if (trackedSpeedElement) trackedSpeedElement.textContent = trackedSatellite.velocity.toFixed(2);
-        if (trackedPositionElement) trackedPositionElement.textContent = formatLatLng(trackedSatellite.position.lat, trackedSatellite.position.lng);
       }
     } else {
       // No satellite being tracked - show defaults
       if (trackedAltitudeElement) trackedAltitudeElement.textContent = '---';
       if (trackedNameElement) trackedNameElement.textContent = '---';
       if (trackedSpeedElement) trackedSpeedElement.textContent = '---';
-      if (trackedPositionElement) trackedPositionElement.textContent = '---';
     }
     if (!constellation && !followingSatellite) this.satelliteTracker.showClock(); // nothing else is drawing (and ticking the clock)
   }
 }
 
 new SatelliteTracker3D();
-
-const formatLatLng = (lat: number, lng: number) =>
-  `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lng).toFixed(2)}°${lng >= 0 ? 'E' : 'W'}`;

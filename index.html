@@ -83,37 +83,33 @@
       </div>
     </div>
 
-    <!-- The tracked satellite's figures -->
-    <div id="sat-hud">
-      <span class="banner-label">Alt</span><span class="banner-value"><span id="tracked-altitude">---</span><span class="banner-unit">km</span></span>
-      <span class="banner-label">Vel</span><span class="banner-value"><span id="tracked-speed">---</span><span class="banner-unit">km/s</span></span>
-      <span class="banner-label">Pos</span><span class="banner-value" id="tracked-position">---</span>
-    </div>
-
-    <!-- When: play/pause, speed, back to now, and the clock (click to set the date and time) -->
-    <div id="timebar">
-      <button id="tl-play"></button>
-      <button id="tl-speed"></button>
-      <button id="tl-reset">⟲</button>
-      <span class="timebar-sep"></span>
-      <button id="time-set" title="Set the date and time"><span id="tl-date"></span> <span id="utc-clock">--:--:--</span> <span class="banner-label" id="utc-label">UTC</span></button>
-    </div>
-
     <!-- Command Palette Hint -->
     <div id="command-hint" class="command-hint">
       Press <span class="command-shortcut">/</span> to search satellites
     </div>
     
-    <!-- Simple Top Banner -->
+    <!-- Top: what on the left, when on the right -->
     <div id="cockpit-panel">
-      <!-- Single Line Banner Layout -->
-      <div id="banner-display">
-        <!-- What is shown: the satellite (click to search), its constellation or the constellation's size under it -->
+      <!-- Top left, as a map title: what (constellation › satellite) and its figures -->
+      <div id="top-what">
+        <span id="tracked-parent"></span>
         <div class="banner-item tracking" data-section="search" title="Click to search satellites (or press /)">
-          <span class="tracking-dot"></span>
           <span class="tracking-name" id="tracked-name">No satellite selected</span>
         </div>
-        <div id="tracked-sub"></div>
+        <span id="tracked-count"></span>
+        <span class="sat-figures">
+          <span><span id="tracked-altitude">---</span> <span class="banner-unit">km</span></span>
+          <span><span id="tracked-speed">---</span> <span class="banner-unit">km/s</span></span>
+        </span>
+      </div>
+
+      <!-- Top right: when (click to set), then play / speed / back to now -->
+      <div id="top-when">
+        <button id="time-set" title="Set the date and time"><span id="tl-date"></span> <span id="utc-clock">--:--:--</span> <span class="banner-unit" id="utc-label">UTC</span></button>
+        <span class="top-sep"></span>
+        <button id="tl-play"></button>
+        <button id="tl-speed"></button>
+        <button id="tl-reset"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.5"/><path d="M3 2.5V5h2.5"/></svg></button>
       </div>
 
       <!-- Search Dropdown (Replaced with Command Palette) -->

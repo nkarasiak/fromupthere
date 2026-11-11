@@ -125,8 +125,8 @@
 /* Command palette hint */
 .command-hint {
   position: fixed;
-  bottom: 70px;
-  left: 50%; /* centred, above the time bar */
+  bottom: 20px;
+  left: 50%; /* centred: the bottom-right corner holds the map credits */
   background: rgba(0, 0, 0, 0.9);
   color: rgba(255, 255, 255, 0.7);
   padding: 8px 12px;

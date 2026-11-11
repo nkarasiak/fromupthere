@@ -5,7 +5,6 @@
 
 /* Layout styles */
 @import './layout/cockpit.css';
-@import './layout/responsive.css';
 
 /* Component styles */
 @import './components/buttons.css';
@@ -43,10 +42,9 @@
 #settings form { margin-top: 16px; text-align: right; }
 #settings form button { cursor: pointer; padding: 6px 14px; }
 
-/* Date/time picker above the time bar's clock (native popover) */
+/* Date/time picker under the clock, top right (native popover) */
 #time-picker {
-  inset: auto auto 70px 50%;
-  transform: translateX(-50%);
+  inset: 48px 20px auto auto;
   margin: 0;
   padding: 14px 16px;
   color: #ddd;
