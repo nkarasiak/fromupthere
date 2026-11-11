@@ -1,6 +1,7 @@
 import { Map as MapLibreMap, AttributionControl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { DeckSatelliteTracker } from './deck-satellite-tracker';
+import { globeZoomShift } from './smooth-camera';
 import { URLState } from './url-state';
 import { CommandPalette } from './command-palette';
 import { installNightShading } from './night-layer';
@@ -530,10 +531,12 @@ class SatelliteTracker3D {
       return;
     }
     
-    const zoom = Math.round(this.map.getZoom() * 10) / 10; // Round to 1 decimal
+    const followingSatellite = this.satelliteTracker.getFollowingSatellite() || '';
+    // While tracking, the URL keeps the equator-equivalent zoom (the camera shifts it with the latitude)
+    const z = this.map.getZoom() - (followingSatellite ? globeZoomShift(this.map.getCenter().lat) : 0);
+    const zoom = Math.round(z * 10) / 10; // Round to 1 decimal
     const pitch = Math.round(this.map.getPitch());
     const bearing = Math.round(this.map.getBearing());
-    const followingSatellite = this.satelliteTracker.getFollowingSatellite() || '';
     
     // Only update URL if values that are actually stored in URL have changed
     const hasChanged = 
@@ -770,7 +773,7 @@ class SatelliteTracker3D {
       if (trackedPositionElement) trackedPositionElement.textContent = '---';
     }
     const utcClock = document.getElementById('utc-clock');
-    if (utcClock && !constellation) utcClock.textContent = new Date().toISOString().slice(11, 19);
+    if (utcClock && !constellation) utcClock.textContent = new Date(this.satelliteTracker.simNow()).toISOString().slice(11, 19);
   }
 }
 

@@ -37,6 +37,12 @@ export class SmoothCamera {
   private adaptiveSmoothingEnabled = true;
   private velocityBasedSmoothing = true;
   
+  // Time-lapse speed: the same smoothing per simulated second, so the camera doesn't trail a sped-up satellite
+  speed = 1;
+  // Read the target every frame (pushed targets arrive at ~30 Hz: at x100 the camera then stepped 25 km at a time
+  // behind a satellite drawn at the frame's own time, so the satellite shook on screen)
+  source?: () => PredictivePosition | null;
+
   // User bearing control
   private userControlledBearing = false;
   private userBearing = 0;
@@ -81,7 +87,8 @@ export class SmoothCamera {
         return;
       }
 
-      // Apply smooth camera movement
+      const p = this.source?.();
+      if (p) this.targetPosition = p;
       this.applySmoothMovement();
       
       // Continue the loop
@@ -112,7 +119,8 @@ export class SmoothCamera {
     }
 
     // Calculate adaptive smoothing factor based on satellite velocity
-    const smoothingFactor = this.calculateAdaptiveSmoothingFactor();
+    const base = this.calculateAdaptiveSmoothingFactor();
+    const smoothingFactor = 1 - (1 - base) ** this.speed;
     
     // Apply predictive positioning (look ahead for smoother tracking)
     const predictiveTarget = this.calculatePredictiveTarget(targetCenter);
@@ -133,12 +141,15 @@ export class SmoothCamera {
     }
 
     // Smooth bearing interpolation to avoid sudden jumps
-    const newBearing = this.interpolateBearing(currentState.bearing, targetBearing, smoothingFactor * 0.5);
+    const newBearing = this.interpolateBearing(currentState.bearing, targetBearing, 1 - (1 - base * 0.5) ** this.speed);
 
     // Apply the smooth movement
+    // MapLibre's globe grows by 1/cos(lat) at a fixed zoom: shift the zoom with the latitude so the globe keeps its
+    // size on screen (near a pole it would otherwise zoom in ~5x and the satellite would leave the screen)
+    const zoom = currentState.zoom + globeZoomShift(newCenter[1]) - globeZoomShift(currentState.center[1]);
     this.map.jumpTo({
       center: newCenter,
-      zoom: currentState.zoom,
+      zoom,
       pitch: currentState.pitch,
       bearing: newBearing // Use automatic bearing based on satellite direction
     });
@@ -146,7 +157,7 @@ export class SmoothCamera {
     // Update last known state
     this.lastCameraState = {
       center: newCenter,
-      zoom: currentState.zoom,
+      zoom,
       pitch: currentState.pitch,
       bearing: newBearing,
       timestamp: Date.now()
@@ -346,3 +357,6 @@ export class SmoothCamera {
     };
   }
 }
+
+// Zoom offset at latitude `lat` that keeps MapLibre's globe the size it has on screen at the equator
+export const globeZoomShift = (lat: number) => Math.log2(Math.max(0.05, Math.cos(lat * Math.PI / 180)));
