@@ -125,8 +125,8 @@
 /* Command palette hint */
 .command-hint {
   position: fixed;
-  bottom: 20px;
-  left: 50%; /* centred: the bottom-right corner holds the map credits */
+  bottom: 70px;
+  left: 50%; /* centred, above the time bar */
   background: rgba(0, 0, 0, 0.9);
   color: rgba(255, 255, 255, 0.7);
   padding: 8px 12px;
@@ -143,4 +143,8 @@
 .command-hint.show {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+/* Touch screens have no "/" key */
+@media (hover: none) {
+  .command-hint { display: none; }
 }

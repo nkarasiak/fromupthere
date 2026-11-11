@@ -454,7 +454,7 @@ class SatelliteTracker3D {
     this.updateConstellationSlot();
   }
 
-  // Click the banner clock (or the time-lapse date) to pick the simulated date and time, in UTC like the clock.
+  // Click the clock in the time bar to pick the simulated date and time, in UTC like the clock.
   // A native popover with a datetime-local field: Enter or Go jumps there, Now goes back to the present.
   private installTimePicker() {
     const DAY = 24 * 3600e3, RANGE = 30 * DAY; // ponytail: TLEs drift by tens of km a month from their epoch; widen with archived TLEs
@@ -477,8 +477,7 @@ class SatelliteTracker3D {
       this.satelliteTracker.setSimTime(null);
       pop.hidePopover();
     };
-    document.getElementById('banner-display')!.addEventListener('click', e => {
-      if (!(e.target as Element).closest('#utc-item, #tl-date-item')) return;
+    document.getElementById('time-set')!.addEventListener('click', () => {
       input.min = iso(Date.now() - RANGE);
       input.max = iso(Date.now() + RANGE);
       input.value = iso(this.satelliteTracker.clockNow());
@@ -487,19 +486,19 @@ class SatelliteTracker3D {
     });
   }
 
-  // While tracking a member of a constellation, the banner names it: a click opens the constellation
+  // Under the name in the top bar: a tracked satellite's constellation (a click opens it), or a constellation's size
   private updateConstellationSlot() {
-    document.querySelectorAll('.group-slot').forEach(e => e.remove());
+    const sub = document.getElementById('tracked-sub')!;
+    sub.textContent = '';
+    const n = this.satelliteTracker.getConstellationSize();
+    if (n) { sub.textContent = `${n} satellite${n > 1 ? 's' : ''}`; return; }
     const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
     if (!group) return;
-    const t = document.createElement('template');
-    t.innerHTML = `<div class="banner-item banner-extra group-slot"><span class="banner-label">Constellation</span>
-      <button class="banner-value" title="View the ${group.name} constellation"></button></div>
-      <div class="banner-separator banner-extra group-slot"></div>`;
-    const btn = t.content.querySelector('button')!;
-    btn.textContent = group.name;
+    const btn = document.createElement('button');
+    btn.textContent = `${group.name} ›`;
+    btn.title = `View the ${group.name} constellation`;
     btn.onclick = () => this.openConstellation(group, true);
-    document.querySelector('#banner-display .banner-left')!.prepend(...Array.from(t.content.children)); // the left has room
+    sub.append(btn);
   }
 
   private updateURL() {
@@ -730,9 +729,9 @@ class SatelliteTracker3D {
       }
     }
     
-    // Constellation view: the bar shows the constellation; per-satellite readouts are hidden (see cockpit.css)
+    // The satellite's figures (bottom left) only while tracking one
     const constellation = this.satelliteTracker.getConstellationName();
-    document.getElementById('banner-display')?.classList.toggle('constellation-mode', !!constellation);
+    document.body.classList.toggle('tracking-mode', !constellation && !!followingSatellite);
     if (constellation) {
       if (trackedNameElement) trackedNameElement.textContent = constellation;
     } else if (followingSatellite) {
@@ -750,8 +749,7 @@ class SatelliteTracker3D {
       if (trackedSpeedElement) trackedSpeedElement.textContent = '---';
       if (trackedPositionElement) trackedPositionElement.textContent = '---';
     }
-    const utcClock = document.getElementById('utc-clock');
-    if (utcClock && !constellation) utcClock.textContent = new Date(this.satelliteTracker.simNow()).toISOString().slice(11, 19);
+    if (!constellation && !followingSatellite) this.satelliteTracker.showClock(); // nothing else is drawing (and ticking the clock)
   }
 }
 

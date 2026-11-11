@@ -46,7 +46,9 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 40px;
+  min-height: 40px;
+  padding-top: 5px;
+  padding-bottom: 5px;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -65,11 +67,9 @@
 /* Top Banner Layout */
 #banner-display {
   display: flex;
+  flex-direction: column; /* the name, and under it its constellation or the constellation's size */
   align-items: center;
-  justify-content: center;
-  width: 100%;
-  max-width: 1200px;
-  gap: 28px;
+  gap: 3px;
   font-size: 13px;
   color: #ffffff;
 }
@@ -121,14 +121,6 @@
   margin-left: 2px;
 }
 
-/* Banner Separator */
-.banner-separator {
-  flex-shrink: 0; /* a crowded half would squeeze it to nothing */
-  width: 1px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.2);
-  margin: 0 8px;
-}
 
 /* Tracking Name Styling */
 .tracking-name {
@@ -186,34 +178,76 @@
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, -6px); } }
 @keyframes toast-out { to { opacity: 0; } }
 
-/* Constellation view: the bar names the constellation; per-satellite readouts don't apply */
-#banner-display.constellation-mode .sat-only {
-  display: none;
-}
-/* ...but its (simulated) clock stays on small screens, where the real-time one is hidden */
-#banner-display.constellation-mode #utc-item {
-  display: flex;
-}
-
-/* Left and right halves of equal width around the name, which therefore sits at the exact centre */
-.banner-side {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: inherit;
-}
-.banner-left { justify-content: flex-end; }
-.banner-right { justify-content: flex-start; }
-
 /* Label and value share a text baseline (centring them put a 13 px value 3 px above its 11 px label) */
 .banner-item:has(> .banner-label) {
   align-items: baseline;
 }
 
-/* Clock and date: same size as the other values, lighter, as they change constantly */
+/* Clock and date: lighter than the other values, as they change constantly */
 #utc-clock, #tl-date {
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: #ddd;
+}
+
+/* Under the name: the constellation (a quiet link) or the constellation's size */
+#tracked-sub { font-size: 11px; color: #999; line-height: 1.2; }
+#tracked-sub:empty { display: none; }
+#tracked-sub button { font: inherit; color: #bbb; background: none; border: 0; padding: 0; cursor: pointer; transition: color 0.2s; }
+#tracked-sub button:hover { color: #00ffaa; }
+
+/* Bottom panels: the time bar (centre) and the tracked satellite's figures (left), styled like the top bar */
+#timebar, #sat-hud {
+  position: fixed;
+  bottom: 16px;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+}
+#timebar {
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+}
+#timebar button {
+  font: inherit;
+  font-size: 13px;
+  color: #888;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  transition: color 0.2s, background 0.2s;
+}
+#timebar button:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+#timebar button:focus-visible { outline: 1px solid rgba(0, 212, 255, 0.6); }
+#tl-speed { min-width: 3.4em; justify-content: center; color: #fff !important; font-weight: 600; font-variant-numeric: tabular-nums; }
+.timebar-sep { width: 1px; height: 18px; background: rgba(255, 255, 255, 0.15); margin: 0 4px; }
+#time-set { color: #ddd !important; white-space: nowrap; }
+#time-set:hover #utc-clock, #time-set:hover #tl-date { color: #00ffaa; }
+
+#sat-hud {
+  left: 16px;
+  display: none; /* only while tracking a satellite */
+  grid-template-columns: auto auto;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 10px 14px;
+}
+body.tracking-mode #sat-hud { display: grid; }
+
+/* Narrow screens: the figures sit above the time bar */
+@media (max-width: 640px) {
+  #sat-hud { bottom: 72px; }
 }

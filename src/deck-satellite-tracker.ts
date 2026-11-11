@@ -129,16 +129,16 @@ export class DeckSatelliteTracker {
   private tlDots: Array<{ id: string; name: string; position: number[]; alpha: number; dist: number; label: number }> = [];
   private tlFrame = 0;
   private tlHeavyAt = 0;
-  private tlUiAt = 0;
   private tlVersion = 0;
   private nightTimeSetter?: (t: number | null) => void;
   private constellationLayers: any[] = [];
   // Tracking view clock: live, or a time-lapse anchored at (trackSimT0 simulated, trackRealT0 performance.now)
   private trackLive = true;
   private trackSpeed = 1;
+  private trackPaused = false;
+  private clockUiAt = 0;
   private trackSimT0 = 0;
   private trackRealT0 = 0;
-  private trackUiAt = 0;
   private trackedOnGlobe = false; // the tracked satellite is drawn by the globe overlay (real altitude, ground track)
   private trackedPath: { id: string; base: number; end: number; line: number[]; light: number[]; heading: number[] } | null = null;
   private mapHeight = 0; // map container height, cached: reading clientHeight every frame forced a layout
@@ -211,6 +211,7 @@ export class DeckSatelliteTracker {
     
     this.initializeDeck();
     this.initializeWorker();
+    this.installTimeControls();
   }
 
 
@@ -466,10 +467,7 @@ export class DeckSatelliteTracker {
     this.constellation = null;
     this.constellationLayers = [];
     cancelAnimationFrame(this.tlRaf);
-    document.querySelectorAll('.tl-slot').forEach(e => e.remove());
-    // The banner clock goes back to real time
-    document.getElementById('utc-label')!.textContent = 'UTC';
-    document.getElementById('utc-clock')!.textContent = new Date().toISOString().slice(11, 19);
+    document.getElementById('utc-label')!.textContent = 'UTC'; // the clock goes back to real time
     this.nightTimeSetter?.(null); // day/night back to real time
     (this.map as any).transform.clearNearFarZOverride?.();
     document.getElementById('deck-canvas')!.style.visibility = '';
@@ -488,7 +486,7 @@ export class DeckSatelliteTracker {
     }
 
     // From a satellite in time-lapse, carry on with its clock (time and speed); from live tracking, start now at the default speed
-    const fromTrack = this.followingSatellite && !this.trackLive ? { t: this.simNow(), speed: this.trackSpeed } : null;
+    const fromTrack = this.followingSatellite && !this.trackLive ? { t: this.simNow(), speed: this.trackSpeed, paused: this.trackPaused } : null;
     this.stopSimpleTracking();
     this.smoothTracker.stopTracking();
     this.smoothCamera.stopSmoothTracking();
@@ -582,10 +580,11 @@ export class DeckSatelliteTracker {
 
     // Time-lapse: starts playing right after the fly-in
     this.tlGmst = gmst;
-    this.tlPlaying = true;
+    this.tlPlaying = !fromTrack?.paused;
     this.tlSpeed = fromTrack?.speed ?? settings.speed;
     this.anchorTimelapse(nowDate.getTime());
-    this.buildTimelapseControls();
+    document.getElementById('utc-label')!.textContent = 'Sim UTC';
+    this.syncTimeControls();
     cancelAnimationFrame(this.tlRaf);
     this.tlLast = 0;
     this.tlRaf = requestAnimationFrame(this.constellationFrame);
@@ -635,54 +634,6 @@ export class DeckSatelliteTracker {
       pts.push([satellite.degreesLong(g.longitude), satellite.degreesLat(g.latitude), g.height * 1000]);
     }
     return pts;
-  }
-
-  // The time-lapse lives in the top banner, laid out like the single-satellite one (label + value slots around the
-  // name): Date | Sim UTC | name | Sats | Speed. Its clock shows the simulated time: one clock on screen, not two.
-  private buildTimelapseControls() {
-    document.querySelectorAll('.tl-slot').forEach(e => e.remove());
-    const bar = document.getElementById('banner-display')!;
-    const slots = (html: string) => {
-      const t = document.createElement('template');
-      t.innerHTML = html.trim();
-      return [...t.content.children].map(e => { e.classList.add('tl-slot'); return e; });
-    };
-    const icon = (playing: boolean) => `<svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">${playing
-      ? '<rect x="2" y="1" width="3" height="10" rx="1"/><rect x="7" y="1" width="3" height="10" rx="1"/>'
-      : '<path d="M3 1.5v9a.5.5 0 0 0 .77.42l7-4.5a.5.5 0 0 0 0-.84l-7-4.5A.5.5 0 0 0 3 1.5z"/>'}</svg>`;
-    bar.querySelector('.banner-left')!.prepend(...slots(` // date first, then the time
-      <div class="banner-item banner-extra" id="tl-date-item" title="Set the date and time"><span class="banner-label">Date</span><span class="banner-value" id="tl-date"></span></div>
-      <div class="banner-separator banner-extra"></div>`));
-    bar.querySelector('.banner-right')!.append(...slots(`
-      <div class="banner-item banner-extra"><span class="banner-label">Sats</span><span class="banner-value">${this.constellation?.length ?? 0}</span></div>`));
-    document.getElementById('utc-item')!.after(...slots(` // the speed next to the clock it drives
-      <div class="banner-separator"></div>
-      <div class="banner-item" id="timelapse"><span class="banner-label">Speed</span>
-        <button id="tl-play" title="Pause / play" aria-label="Pause">${icon(this.tlPlaying)}</button>
-        <button id="tl-speed"></button>
-        <button id="tl-reset" title="Restart from now" aria-label="Restart from now">⟲</button></div>`));
-    document.getElementById('utc-label')!.textContent = 'Sim UTC';
-    const box = document.getElementById('timelapse')!;
-    box.querySelector('#tl-play')!.addEventListener('click', e => {
-      this.tlPlaying = !this.tlPlaying;
-      const b = e.currentTarget as HTMLElement;
-      b.innerHTML = icon(this.tlPlaying);
-      b.setAttribute('aria-label', this.tlPlaying ? 'Pause' : 'Play');
-    });
-    // One quiet value, like the banner's others: a click steps to the next speed
-    const speed = box.querySelector<HTMLElement>('#tl-speed')!;
-    const showSpeed = () => {
-      const next = SPEEDS[(SPEEDS.indexOf(this.tlSpeed) + 1) % SPEEDS.length];
-      speed.textContent = `×${this.tlSpeed}`;
-      speed.title = `Speed ×${this.tlSpeed}: click for ×${next}`;
-      speed.setAttribute('aria-label', speed.title);
-    };
-    showSpeed();
-    speed.addEventListener('click', () => {
-      this.tlSpeed = SPEEDS[(SPEEDS.indexOf(this.tlSpeed) + 1) % SPEEDS.length];
-      showSpeed();
-    });
-    box.querySelector('#tl-reset')!.addEventListener('click', () => this.anchorTimelapse(Date.now()));
   }
 
   private constellationFrame = (ts: number) => {
@@ -772,13 +723,7 @@ export class DeckSatelliteTracker {
       this.updateRingSegments(gmst);
       this.tlVersion++;
     }
-    if (now - this.tlUiAt > 250) { // clock label
-      this.tlUiAt = now;
-      const iso = date.toISOString();
-      const clock = document.getElementById('utc-clock'), day = document.getElementById('tl-date');
-      if (clock) clock.textContent = iso.slice(11, 19);
-      if (day) day.textContent = iso.slice(0, 10);
-    }
+    this.showClock(this.tlSim);
     this.renderConstellation();
   };
 
@@ -1902,13 +1847,8 @@ export class DeckSatelliteTracker {
     const [r, g, b] = group?.color ?? [0, 255, 136];
     const halfKm = (group?.swathKm ?? 0) / 2;
     const now = this.simNow();
-    if (!this.trackLive) {
-      this.nightTimeSetter?.(now); // the terminator follows the simulated sun
-      if (performance.now() - this.trackUiAt > 250) {
-        this.trackUiAt = performance.now();
-        document.getElementById('utc-clock')!.textContent = new Date(now).toISOString().slice(11, 19);
-      }
-    }
+    if (!this.trackLive) this.nightTimeSetter?.(now); // the terminator follows the simulated sun
+    this.showClock(now);
     const p = this.smoothTracker.getPredictedPosition();
     // Before the tracker starts (fly-in) compute the position too: the stored one can be at another time (a constellation
     // time-lapse leaves it at its simulated time), which drew the cone away from the swath
@@ -2205,7 +2145,7 @@ export class DeckSatelliteTracker {
 
   // Tracking view time (ms): real time when live, else the time-lapse clock
   simNow(): number {
-    return this.trackLive ? Date.now() : this.trackSimT0 + (performance.now() - this.trackRealT0) * this.trackSpeed;
+    return this.trackLive ? Date.now() : this.trackSimT0 + (this.trackPaused ? 0 : (performance.now() - this.trackRealT0) * this.trackSpeed);
   }
 
   private setTrackTime(t: number) {
@@ -2223,22 +2163,26 @@ export class DeckSatelliteTracker {
   // Tracking starts live, except from a constellation: it keeps the time-lapse's clock (time and speed), so the
   // satellite clicked is where it was and nothing changes speed behind the user's back
   private startTrackClock() {
-    const tl = this.constellation ? { t: this.tlSim, speed: this.tlSpeed } : null;
+    const tl = this.constellation ? { t: this.tlSim, speed: this.tlSpeed, paused: !this.tlPlaying } : null;
     this.clearConstellation();
     this.resetTrackClock();
     if (tl) {
       this.setTrackTime(tl.t);
       this.trackSpeed = this.smoothCamera.speed = tl.speed;
+      this.trackPaused = tl.paused;
     }
-    this.buildTrackSpeedControls();
+    this.syncTimeControls();
   }
 
   /** Jump the clock of the current view to t (ms since epoch); null = now (tracking: back to live). */
   setSimTime(t: number | null) {
-    if (this.constellation) return this.anchorTimelapse(t ?? Date.now());
+    if (this.constellation) {
+      this.anchorTimelapse(t ?? Date.now());
+      return this.syncTimeControls();
+    }
     if (t === null) this.resetTrackClock();
     else this.setTrackTime(t);
-    this.buildTrackSpeedControls(); // the speed shown
+    this.syncTimeControls();
   }
 
   /** The current view's clock (ms since epoch). */
@@ -2246,32 +2190,64 @@ export class DeckSatelliteTracker {
     return this.constellation ? this.tlSim : this.simNow();
   }
 
+  /** Date and time in the time bar, at most 4 times a second. */
+  showClock(t = this.clockNow()) {
+    if (performance.now() - this.clockUiAt < 250) return;
+    this.clockUiAt = performance.now();
+    const iso = new Date(t).toISOString();
+    document.getElementById('tl-date')!.textContent = iso.slice(0, 10);
+    document.getElementById('utc-clock')!.textContent = iso.slice(11, 19);
+  }
+
+  /** Number of satellites in the constellation shown (0: none). */
+  getConstellationSize(): number {
+    return this.constellation?.length ?? 0;
+  }
+
+  // The time bar (bottom centre) drives whichever view is shown: play/pause, speed (a click steps x1 -> x10 -> x100 ->
+  // x300), back to now (tracking: live; constellation: restart from now)
+  private installTimeControls() {
+    const $ = (id: string) => document.getElementById(id)!;
+    $('tl-play').onclick = () => {
+      if (this.constellation) this.tlPlaying = !this.tlPlaying;
+      else {
+        this.setTrackTime(this.simNow()); // a paused clock is a simulated one
+        this.trackPaused = !this.trackPaused;
+      }
+      this.syncTimeControls();
+    };
+    $('tl-speed').onclick = () => {
+      const next = SPEEDS[(SPEEDS.indexOf(this.constellation ? this.tlSpeed : this.trackSpeed) + 1) % SPEEDS.length];
+      if (this.constellation) this.tlSpeed = next;
+      else this.setTrackSpeed(next);
+      this.syncTimeControls();
+    };
+    $('tl-reset').onclick = () => this.setSimTime(null);
+    this.syncTimeControls();
+  }
+
+  private syncTimeControls() {
+    const playing = this.constellation ? this.tlPlaying : !this.trackPaused;
+    const speed = this.constellation ? this.tlSpeed : this.trackSpeed;
+    const next = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+    const play = document.getElementById('tl-play')!, sp = document.getElementById('tl-speed')!, reset = document.getElementById('tl-reset')!;
+    play.innerHTML = `<svg width="10" height="10" viewBox="0 0 12 12" fill="currentColor">${playing
+      ? '<rect x="2" y="1" width="3" height="10" rx="1"/><rect x="7" y="1" width="3" height="10" rx="1"/>'
+      : '<path d="M3 1.5v9a.5.5 0 0 0 .77.42l7-4.5a.5.5 0 0 0 0-.84l-7-4.5A.5.5 0 0 0 3 1.5z"/>'}</svg>`;
+    play.title = playing ? 'Pause' : 'Play';
+    sp.textContent = `×${speed}`;
+    sp.title = `Speed ×${speed}: click for ×${next}`;
+    reset.title = this.constellation ? 'Restart from now' : 'Back to live';
+    for (const b of [play, sp, reset]) b.setAttribute('aria-label', b.title);
+    this.showClock();
+  }
+
   private resetTrackClock() {
     if (!this.trackLive) this.nightTimeSetter?.(null);
     this.trackLive = true;
+    this.trackPaused = false;
     this.trackSpeed = this.smoothCamera.speed = 1;
     document.getElementById('utc-label')!.textContent = 'UTC';
-  }
-
-  // Speed in the banner, like the constellation time-lapse: a click steps x1 -> x10 -> x100 -> x300; ⟲ back to live
-  private buildTrackSpeedControls() {
-    document.querySelectorAll('.tl-slot').forEach(e => e.remove());
-    const t = document.createElement('template');
-    t.innerHTML = `<div class="banner-separator tl-slot"></div>
-      <div class="banner-item tl-slot" id="timelapse"><span class="banner-label">Speed</span>
-        <button id="tl-speed"></button>
-        <button id="tl-reset" title="Back to live" aria-label="Back to live">⟲</button></div>`;
-    document.getElementById('utc-item')!.after(...Array.from(t.content.children)); // next to the clock it drives
-    const speed = document.getElementById('tl-speed')!;
-    const next = () => SPEEDS[(SPEEDS.indexOf(this.trackSpeed) + 1) % SPEEDS.length];
-    const show = () => {
-      speed.textContent = `×${this.trackSpeed}`;
-      speed.title = `Speed ×${this.trackSpeed}: click for ×${next()}`;
-      speed.setAttribute('aria-label', speed.title);
-    };
-    show();
-    speed.addEventListener('click', () => { this.setTrackSpeed(next()); show(); });
-    document.getElementById('tl-reset')!.addEventListener('click', () => { this.resetTrackClock(); show(); });
   }
 
   // Where the tracking camera will be at time t (ms): centred on the satellite's ground point, turned to its heading.

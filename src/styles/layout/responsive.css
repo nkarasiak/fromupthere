@@ -1,52 +1,10 @@
-/* Responsive Top Banner Layout */
-@media (max-width: 1024px) {
-  .banner-extra {
-    display: none;
-  }
-}
-
-@media (max-width: 768px) {
-  #banner-display {
-    gap: 20px;
-  }
-  
-  .banner-item {
-    font-size: 12px;
-  }
-  
-  .banner-label {
-    font-size: 10px;
-  }
-  
-  .tracking-name {
-    max-width: 120px;
-  }
-}
-
+/* Phones: the name has the top bar to itself */
 @media (max-width: 480px) {
   #cockpit-panel {
-    height: 60px;
-    padding: 0 12px;
+    padding: 5px 12px;
   }
-  
-  #banner-display {
-    gap: 12px;
-  }
-  
-  .banner-separator {
-    display: none;
-  }
-  
-  .banner-item {
-    font-size: 11px;
-    gap: 4px;
-  }
-  
-  .banner-label {
-    display: none;
-  }
-  
+
   .tracking-name {
-    max-width: 80px;
+    max-width: 70vw;
   }
 }

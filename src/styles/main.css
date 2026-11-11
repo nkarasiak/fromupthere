@@ -43,39 +43,9 @@
 #settings form { margin-top: 16px; text-align: right; }
 #settings form button { cursor: pointer; padding: 6px 14px; }
 
-/* Constellation time-lapse: the "Speed" slot of the top banner, as quiet as the banner's other values */
-#timelapse { gap: 2px; }
-#timelapse .banner-label { margin-right: 2px; }
-#timelapse button {
-  font: inherit;
-  color: #777;
-  background: none;
-  border: 0;
-  border-radius: 4px;
-  padding: 3px 4px;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  transition: color 0.2s;
-}
-#timelapse button:hover { color: #fff; }
-#timelapse button:focus-visible { outline: 1px solid rgba(0, 212, 255, 0.6); outline-offset: 1px; }
-#tl-speed {
-  min-width: 3.4em;
-  color: #fff !important;
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-#tl-speed:hover { color: #00d4ff !important; }
-#tl-reset { font-size: 12px; }
-
-
-/* Date/time picker under the banner clock (native popover) */
-#utc-item, #tl-date-item { cursor: pointer; }
-#utc-item:hover .banner-value, #tl-date-item:hover .banner-value { color: #00ffaa; }
+/* Date/time picker above the time bar's clock (native popover) */
 #time-picker {
-  inset: 52px auto auto 50%;
+  inset: auto auto 70px 50%;
   transform: translateX(-50%);
   margin: 0;
   padding: 14px 16px;
