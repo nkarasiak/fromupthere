@@ -110,17 +110,18 @@
       <!-- Top right: when (click to set), then play / speed / back to now -->
       <div id="top-when">
         <button id="tl-live"><i></i></button>
-        <button id="time-set" title="Set the date and time"><span id="tl-date"></span> <span id="utc-clock">--:--:--</span> <span class="banner-unit">UTC</span></button>
-        <button id="tl-rate"></button>
-        <!-- Next satellite to image you, and when (main.ts) -->
-        <button id="next-over" title="Next satellite over you"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M8 14.5s5-4.6 5-8.5a5 5 0 0 0-10 0c0 3.9 5 8.5 5 8.5z"/><circle cx="8" cy="6" r="1.8"/></svg><span id="next-over-text"></span></button>
+        <!-- The clock and the speed sign; on hover, the speed and a time to go to (main.ts) -->
+        <span id="tl-when">
+          <button id="time-set"><span id="tl-date"></span> <span id="utc-clock">--:--</span> <span class="banner-unit">UTC</span> <span id="tl-offset"></span></button>
+          <button id="tl-rate"></button>
+        </span>
         <!-- An imaging constellation: how far back its swaths go (deck-satellite-tracker.ts fills it) -->
         <span id="tl-window" hidden>
           <button id="tl-cover" aria-haspopup="menu" aria-expanded="false">
             <span id="tl-cover-span"></span>
           </button>
           <span id="tl-cover-tip" role="tooltip"></span>
-          <span id="tl-cover-menu" role="menu" hidden><span>Share of the Earth the swaths of the last … have imaged</span></span>
+          <span id="tl-cover-menu" role="menu" hidden><span>Swaths of the last</span></span>
         </span>
       </div>
 

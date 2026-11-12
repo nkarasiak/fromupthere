@@ -28,7 +28,7 @@ body.opening #deck-canvas { visibility: hidden; } /* the satellite's dot over th
   pointer-events: auto;
 }
 #top-what { gap: 8px; }
-#top-when { gap: 10px; }
+#top-when { gap: 2px; } /* the buttons' own padding spaces them */
 #cockpit-panel button {
   font: inherit;
   color: inherit;
@@ -58,42 +58,81 @@ body.opening #deck-canvas { visibility: hidden; } /* the satellite's dot over th
 body.tracking-mode .sat-figures { display: flex; }
 .banner-unit { color: #9a9a9a; }
 
-/* When: a live dot (lit red at now x1, else a grey ring: click to go back live), the clock (click: the date), the speed
-   (click: pause and speeds) in grey, as the units */
+/* When: a live dot (lit red at now x1, else a grey ring: click to go back live), the clock (click: the date): the time,
+   UTC, and off live how far from now, in grey (17:47 UTC +1 min). Then the speed as a sign (click: pause and speeds). */
 #time-set { font-variant-numeric: tabular-nums; }
-#tl-date:empty { display: none; }
+#tl-date:empty, #tl-offset:empty { display: none; }
+#utc-clock { color: #fff; font-weight: 600; }
+#tl-date, #tl-offset { color: #9a9a9a; }
 #cockpit-panel #tl-live { display: flex; padding: 6px; margin-right: -8px; }
 #tl-live i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid #777; box-sizing: border-box; transition: all 0.3s; }
 #tl-live:hover i { border-color: #fff; }
 #cockpit-panel #tl-live.live { cursor: default; }
 #tl-live.live i { background: #ff4d5e; border-color: #ff4d5e; box-shadow: 0 0 6px rgba(255, 77, 94, 0.7); }
-#cockpit-panel #tl-rate, #cockpit-panel #next-over { display: flex; gap: 6px; align-items: center; color: #9a9a9a; }
-#cockpit-panel #tl-rate { min-width: 2.6em; justify-content: center; font-variant-numeric: tabular-nums; }
-#cockpit-panel #tl-rate:hover, #cockpit-panel #next-over:hover { color: #fff; }
-/* Your location (next satellite over you): a small dot, a ring breathing out of it */
-.here-dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 6px rgba(0, 212, 255, 0.9); pointer-events: none; }
-.here-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1px solid #00d4ff; animation: here-pulse 2.4s ease-out infinite; }
-@keyframes here-pulse { from { transform: scale(1); opacity: 0.9; } to { transform: scale(5); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .here-dot::after { animation: none; transform: scale(2.5); opacity: 0.5; } }
+/* Hover the clock or the speed sign (main.ts): the speed and a time to go to, under them, as the coverage panel: plain
+   text, the speed set white and underlined, the parts of the time dashed (the one whose choices show: solid), the
+   choices in a grid under it */
+#tl-when { position: relative; display: flex; align-items: center; }
+#time-panel { position: absolute; right: 0; top: calc(100% + 4px); display: grid; grid-template-columns: auto auto; align-items: center;
+  column-gap: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#time-panel[hidden] { display: none; }
+#tl-when:hover #time-panel[hidden], #tl-when.open #time-panel[hidden] { display: grid; }
+#time-panel::before { content: ''; position: absolute; left: 0; right: 0; top: -6px; height: 6px; } /* a bridge over the gap */
+/* Two columns: the item in small grey capitals, its values in plain text (lighter), the one set white and underlined */
+.tp-row { display: flex; align-items: center; }
+.tp-label { padding: 4px 0 4px 6px; color: #8a8a8a; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.tp-unit { padding: 4px 6px 4px 2px; color: #9a9a9a; }
+#cockpit-panel #time-panel button { display: flex; align-items: center; padding: 4px 6px; color: #c8c8c8; }
+#cockpit-panel #time-panel button:hover:not(:disabled) { color: #fff; }
+#cockpit-panel #time-panel button:disabled { color: #4a4f58; cursor: default; }
+#cockpit-panel #time-panel button[aria-pressed="true"] { color: #fff; font-weight: 600; text-decoration: underline 2px; text-underline-offset: 5px; }
+#cockpit-panel #time-panel .tp-part { color: #e6e6e6; text-decoration: underline dashed 1px; text-underline-offset: 5px; }
+#cockpit-panel #time-panel .tp-part[aria-expanded="true"] { color: #fff; text-decoration: underline solid 2px; }
+.tp-hm { display: flex; align-items: center; color: #9a9a9a; }
+#cockpit-panel #time-panel .tp-hm .tp-part { padding: 4px 2px; color: #fff; font-weight: 600; }
+/* The choices under the time: on a dark frosted veil (neutral, so the numbers read over a bright map), a header, then
+   round cells: hover a faint disc, the one set filled white, today a dot under its number, out of range faded */
+.tp-pick { grid-column: 1 / -1; justify-self: end; display: grid; gap: 2px; margin-top: 6px; padding: 10px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 14px; text-shadow: none; }
+.tp-pick[hidden] { display: none; }
+.tp-pick.tp-d { grid-template-columns: repeat(7, 32px); }
+.tp-pick.tp-h, .tp-pick.tp-m { grid-template-columns: repeat(6, 36px); }
+.tp-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 0 8px; }
+.tp-head span { flex: 1; text-align: center; color: #fff; font-weight: 600; }
+.tp-pick.tp-h .tp-head span, .tp-pick.tp-m .tp-head span { color: #8a8a8a; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+#cockpit-panel #time-panel .tp-head button { width: 28px; height: 28px; justify-content: center; padding: 0; border-radius: 50%; font-size: 16px; }
+#cockpit-panel #time-panel .tp-head button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+.tp-wd { padding-bottom: 4px; color: #6f747c; font-size: 10px; font-weight: 600; text-align: center; letter-spacing: 0.04em; }
+#cockpit-panel #time-panel .tp-cell { position: relative; justify-content: center; height: 32px; padding: 0; border-radius: 50%; color: #d0d0d0;
+  font-variant-numeric: tabular-nums; transition: background 0.12s, color 0.12s; }
+.tp-pick.tp-h .tp-cell, .tp-pick.tp-m .tp-cell { border-radius: 16px; }
+#cockpit-panel #time-panel .tp-cell:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); color: #fff; }
+#cockpit-panel #time-panel .tp-cell[aria-pressed="true"] { background: #fff; color: #0b0f14; font-weight: 600; text-decoration: none; }
+#cockpit-panel #time-panel .tp-cell:disabled { color: #3c4048; }
+.tp-today::after { content: ''; position: absolute; bottom: 4px; left: 50%; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: currentColor; }
+#cockpit-panel #tl-rate { display: flex; align-items: center; height: 22px; color: #9a9a9a; }
+#cockpit-panel #tl-rate.fast, #cockpit-panel #tl-rate.paused { color: #e6e6e6; } /* the bar's text colour: the shape says it */
+#cockpit-panel #tl-rate:hover { color: #fff; }
 /* How far back the swaths go: plain grey words, the active one white, underlined in the constellation's colour */
 /* Coverage: the window as plain text like the rest of the bar, the share of the Earth imaged on hover, a menu of windows */
 #tl-window { display: flex; align-items: center; position: relative; }
 #tl-window[hidden] { display: none; }
 #cockpit-panel #tl-cover { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; } /* as the date and time */
-/* On hover, what the globe shows (not while the menu is open) */
-#tl-cover-tip { display: none; position: absolute; right: 6px; top: calc(100% + 4px); white-space: nowrap; color: #b8b8b8; } /* plain text, as the bar */
-#tl-cover:hover:not([aria-expanded="true"]) ~ #tl-cover-tip { display: block; }
-#tl-cover-tip b { color: #fff; font-weight: 600; }
-#tl-cover-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 220px; display: flex; flex-direction: column;
-  padding: 6px; background: rgba(8, 14, 24, 0.92); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px;
-  text-shadow: none; white-space: normal; }
+/* On hover (a click too, for touch), under the label: a row of tabs, "Swaths of the last  90 min  6 h  12 h  24 h", the
+   one shown white and underlined; under it, the share of the Earth imaged in it, as a sentence (the tip) */
+#tl-cover-menu { position: absolute; right: 0; top: calc(100% + 2px); display: flex; align-items: center; white-space: nowrap; }
 #tl-cover-menu[hidden] { display: none; }
-#tl-cover-menu > span { padding: 6px 10px 8px; color: #8a8a8a; font-size: 12px; }
-#cockpit-panel #tl-cover-menu button { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 6px;
-  color: #b8b8b8; text-align: left; font-variant-numeric: tabular-nums; }
-#cockpit-panel #tl-cover-menu button:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
-#cockpit-panel #tl-cover-menu button[aria-checked="true"] { color: #fff; font-weight: 600; background: color-mix(in srgb, var(--swath, #00d4ff) 15%, transparent); }
-#tl-cover-menu button span { color: var(--swath, #00d4ff); }
+#tl-window:hover #tl-cover-menu[hidden] { display: flex; }
+#tl-cover-menu::before { content: ''; position: absolute; left: 0; right: 0; top: -6px; height: 6px; } /* a bridge over the gap: the pointer keeps the hover on its way down */
+#tl-cover-menu > span { padding: 4px 6px; color: #9a9a9a; }
+#cockpit-panel #tl-cover-menu button { padding: 4px 6px; color: #9a9a9a; font-variant-numeric: tabular-nums; }
+#cockpit-panel #tl-cover-menu button:hover { color: #fff; }
+#cockpit-panel #tl-cover-menu button[aria-checked="true"] { color: #fff; font-weight: 600; text-decoration: underline 2px; text-underline-offset: 5px; }
+#tl-cover-menu button span { display: none; } /* the share: in the sentence below instead */
+#tl-cover-tip { display: none; position: absolute; right: 6px; top: calc(100% + 32px); white-space: nowrap; color: #9a9a9a; }
+#tl-window:hover #tl-cover-tip, #tl-window:has(#tl-cover-menu:not([hidden])) #tl-cover-tip { display: block; }
+#tl-cover-tip b { color: #fff; font-weight: 600; }
 
 /* Phones: no date, just the time */
 @media (max-width: 640px) {

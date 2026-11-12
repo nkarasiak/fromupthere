@@ -37,48 +37,6 @@
 #settings form { margin-top: 16px; text-align: right; }
 #settings form button { cursor: pointer; padding: 6px 14px; }
 
-/* Date and time picker under the clock (main.ts), and the speed picker: dark glass, as the coverage menu */
-#time-picker, #speed-picker { margin: 0; color: #b8b8b8; background: rgba(8, 14, 24, 0.92); border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px; font: 13px/1.4 Inter, sans-serif; font-variant-numeric: tabular-nums; }
-#time-picker { inset: 48px 20px auto auto; width: 248px; padding: 10px; }
-#time-picker button { font: inherit; color: inherit; background: none; border: 0; border-radius: 6px; cursor: pointer; }
-#time-picker button:hover:not(:disabled) { color: #fff; background: rgba(255, 255, 255, 0.06); }
-#time-picker button:disabled { color: #3a3f48; cursor: default; }
-#time-picker header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-#time-picker header span { color: #fff; font-weight: 600; }
-#time-picker header button { display: flex; padding: 6px 8px; }
-.tp-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
-.tp-days > span { padding: 4px 0; color: #666; font-size: 11px; }
-.tp-days button { padding: 6px 0; }
-#time-picker .tp-days .today { color: #00d4ff; }
-#time-picker .tp-days [aria-pressed="true"] { color: #fff; font-weight: 600; background: color-mix(in srgb, #00d4ff 18%, transparent); }
-#time-picker label { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 10px 2px 0 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
-#time-picker label span { margin-right: auto; color: #666; font-size: 11px; }
-#time-picker label input { width: 6.5em; padding: 5px 8px; font: inherit; color: #fff; text-align: center; background: rgba(255, 255, 255, 0.06);
-  border: 1px solid transparent; border-radius: 6px; outline: none; }
-#time-picker label input:focus { border-color: rgba(0, 212, 255, 0.5); }
-#time-picker label input:focus:invalid { border-color: rgba(255, 77, 94, 0.6); }
-/* The time slider: a hairline track, a small cyan thumb */
-#time-picker .tp-slider { display: block; width: calc(100% - 16px); margin: 12px 8px 2px; height: 14px; background: none; appearance: none; cursor: pointer; }
-.tp-slider::-webkit-slider-runnable-track { height: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.15); }
-.tp-slider::-moz-range-track { height: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.15); }
-.tp-slider::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; margin-top: -5px; border-radius: 50%; background: #00d4ff; border: 0; }
-.tp-slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #00d4ff; border: 0; }
-.tp-slider:focus-visible { outline: none; }
-.tp-slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.3); }
-.tp-slider:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.3); }
-#time-picker footer { display: flex; justify-content: flex-end; gap: 4px; margin-top: 10px; }
-#time-picker footer button { padding: 6px 12px; }
-#time-picker footer button:last-child { color: #fff; font-weight: 600; background: color-mix(in srgb, #00d4ff 18%, transparent); }
-
-/* Speed picker under the speed (main.ts places it): pause / play, then the speeds, the current one lit */
-#speed-picker { inset: auto; padding: 4px; gap: 2px; }
-#speed-picker:popover-open { display: flex; }
-#speed-picker button { display: flex; align-items: center; padding: 5px 10px; color: #9a9a9a; background: none; border: 0;
-  border-radius: 6px; font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; }
-#speed-picker button:hover { color: #fff; }
-#speed-picker button[aria-pressed="true"] { color: #fff; font-weight: 600; background: rgba(255, 255, 255, 0.08); }
-#speed-picker [data-play] { margin-right: 4px; }
 
 /* Map credits (MapLibre's compact ⓘ): a faint glyph instead of a white disc; dark like the banner when open */
 .maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact { background: transparent; opacity: 0.6; transition: opacity 0.2s; }

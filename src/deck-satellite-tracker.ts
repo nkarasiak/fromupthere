@@ -9,7 +9,7 @@ import { displayName } from './types/satellite';
 import { DataFilterExtension, DataFilterExtensionProps } from '@deck.gl/extensions';
 import { SatelliteDataFetcher } from './satellite-data-fetcher';
 import { SolarCalculator } from './utils/solar-calculator';
-import { settings, SPEEDS } from './settings';
+import { settings, SPEEDS, SPEED_NAMES, DEFAULT_SPEED } from './settings';
 import { PerformanceManager } from './performance-manager';
 import { LODManager, ViewportInfo, SatelliteForLOD } from './lod-manager';
 import { OrbitalInterpolator, SatellitePosition } from './orbital-interpolator';
@@ -67,6 +67,7 @@ const FLY_DURATION_MS = 3000;
 // (an SDF outline instead looked blurred)
 const LABEL_CHIP = { background: true, getBackgroundColor: [8, 14, 24, 150] as [number, number, number, number], backgroundPadding: [8, 3] as [number, number], backgroundBorderRadius: 8 };
 export const PAUSE_ICON = '<svg width="9" height="10" viewBox="0 0 9 10" fill="currentColor" aria-hidden="true"><rect width="3" height="10" rx="1"/><rect x="6" width="3" height="10" rx="1"/></svg>';
+const FORWARD_ICON = '<svg width="16" height="10" viewBox="0 0 16 10" fill="currentColor" aria-hidden="true"><path d="M0 .8v8.4a.6.6 0 0 0 .9.5L7.5 5.5a.6.6 0 0 0 0-1L.9.3A.6.6 0 0 0 0 .8z"/><path d="M7.5 .8v8.4a.6.6 0 0 0 .9.5l6.6-4.2a.6.6 0 0 0 0-1L8.4.3a.6.6 0 0 0-.9.5z"/></svg>';
 export const PLAY_ICON = '<svg width="9" height="10" viewBox="0 0 9 10" fill="currentColor" aria-hidden="true"><path d="M0 .8v8.4a.6.6 0 0 0 .9.5l7.4-4.2a.6.6 0 0 0 0-1L.9.3A.6.6 0 0 0 0 .8z"/></svg>';
 const SIBLING_MARKS_MAX = 16; // a tracked imager's mates drawn with swath, cone and picture up to this many (else dots)
 const SIBLING_SWATH = 0.4; // a mate's swath, relative to the tracked one's
@@ -133,7 +134,7 @@ export class DeckSatelliteTracker {
   private tlGmst = 0;           // Earth rotation angle (rad) at the previous frame
   private tlGmst0 = 0;          // ... at tlT0
   private tlPlaying = true;
-  private tlSpeed = settings.speed;
+  private tlSpeed = DEFAULT_SPEED;
   private tlRings: Array<{ id: string; pts: number[][]; segs: Array<{ a: number[]; b: number[]; c?: number[] }>; inc: number }> = [];
   private tlRingSegs: Array<{ a: number[]; b: number[]; c?: number[] }> = [];
   // A mega-constellation (DENSE_MIN): SGP4 records, positions (two buffers swapped every frame so deck sees new data),
@@ -170,6 +171,7 @@ export class DeckSatelliteTracker {
   private swarm: { layers: any[]; t0: number } | null = null; // the constellation left behind, fading out as tracking flies in
   // Tracking view clock: live, or a time-lapse anchored at (trackSimT0 simulated, trackRealT0 performance.now)
   private trackLive = true;
+  private clockLive = true; // the time bar shows now, x1 (syncTimeControls)
   private trackSpeed = 1;
   private trackPaused = false;
   private clockUiAt = 0;
@@ -535,7 +537,7 @@ export class DeckSatelliteTracker {
     if (ids.length === 0) return false; // the caller says so, or tries another
 
     // From a satellite in time-lapse, carry on with its clock (time and speed); from live tracking, start now at its speed
-    // (x1: the settings' speed only for a constellation opened directly, ?group=)
+    // (DEFAULT_SPEED for a constellation opened directly, ?group=)
     const fromTrack = this.followingSatellite && !this.trackLive ? { t: this.simNow(), speed: this.trackSpeed, paused: this.trackPaused } : null;
     const fromSpeed = this.followingSatellite ? this.trackSpeed : null;
     this.stopSimpleTracking();
@@ -641,7 +643,7 @@ export class DeckSatelliteTracker {
     // Time-lapse: plays from the start, the satellites flying during the fly-in too
     this.tlGmst = gmst;
     this.tlPlaying = !fromTrack?.paused;
-    this.tlSpeed = fromTrack?.speed ?? fromSpeed ?? settings.speed;
+    this.tlSpeed = fromTrack?.speed ?? fromSpeed ?? DEFAULT_SPEED;
     this.anchorTimelapse(nowDate.getTime());
     this.syncTimeControls();
     cancelAnimationFrame(this.tlRaf);
@@ -2427,7 +2429,7 @@ export class DeckSatelliteTracker {
     const tl = this.constellation ? { t: this.tlSim, speed: this.tlSpeed, paused: !this.tlPlaying } : null;
     this.clearConstellation(satelliteId);
     this.resetTrackClock();
-    const speed = tl?.speed ?? settings.speed;
+    const speed = tl?.speed ?? DEFAULT_SPEED;
     if (tl || speed !== 1) {
       this.setTrackTime(tl?.t ?? Date.now());
       this.trackSpeed = this.smoothCamera.speed = speed;
@@ -2469,9 +2471,11 @@ export class DeckSatelliteTracker {
   showClock(t = this.clockNow()) {
     if (performance.now() - this.clockUiAt < 250) return;
     this.clockUiAt = performance.now();
-    const iso = new Date(t).toISOString();
-    document.getElementById('tl-date')!.textContent = iso.slice(0, 10) === new Date().toISOString().slice(0, 10) ? '' : iso.slice(0, 10); // today: no date
-    document.getElementById('utc-clock')!.textContent = iso.slice(11, 19);
+    // The time (with the day if not today), and off live how far from now after it (+2 h 14, -3 d 4 h)
+    const iso = new Date(t).toISOString(), today = iso.slice(0, 10) === new Date().toISOString().slice(0, 10);
+    document.getElementById('tl-offset')!.textContent = this.clockLive ? '' : offsetText(t - Date.now());
+    document.getElementById('tl-date')!.textContent = today ? '' : new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+    document.getElementById('utc-clock')!.textContent = iso.slice(11, 16);
   }
 
   /** Number of satellites in the constellation shown (0: none). */
@@ -2523,9 +2527,11 @@ export class DeckSatelliteTracker {
     dot.classList.toggle('live', live);
     dot.title = live ? 'Live' : 'Back to live';
     dot.setAttribute('aria-label', dot.title);
-    rate.innerHTML = playing ? `${speed}×` : PAUSE_ICON;
-    rate.title = playing ? `Time ${speed}× faster: change, pause` : 'Paused: play, speed';
-    rate.setAttribute('aria-label', rate.title);
+    // The speed as a sign: ▶ real time (grey), ▶▶ faster and ❚❚ paused (as the text)
+    rate.innerHTML = !playing ? PAUSE_ICON : speed === 1 ? PLAY_ICON : FORWARD_ICON;
+    rate.className = !playing ? 'paused' : speed === 1 ? '' : 'fast';
+    rate.setAttribute('aria-label', playing ? `${SPEED_NAMES[speed]}${speed > 1 ? ` (${speed}×)` : ''}` : 'Paused'); // no title: the panel shows on hover
+    this.clockLive = live;
     this.clockUiAt = 0; // show the clock now (a jump in time)
     this.showClock();
   }
@@ -2564,7 +2570,7 @@ export class DeckSatelliteTracker {
     this.startTrackClock(satelliteId, keepClock);
     const pictured = this.satellites.get(satelliteId);
     if (pictured?.image && !this.satelliteIcons.has(satelliteId)) this.loadSatelliteIcon(satelliteId, pictured.image);
-    if (speed) this.setTrackSpeed(speed);
+    if (speed && SPEEDS.includes(speed)) this.setTrackSpeed(speed); // (an old link's ?speed=300: no longer a speed)
     this.followingSatellite = satelliteId;
     // Reset tracked satellite size when following a new satellite
     this.trackedSatelliteSizeMultiplier = 1.0;
@@ -2850,10 +2856,11 @@ export class DeckSatelliteTracker {
     return this.satellites;
   }
 
-  /** Next loaded imager whose swath covers (lat, lng), within 24 h of `from`. Console: `satelliteTracker.nextOverhead(48.85, 2.35)`.
+  /** Next loaded imager (or of `ids`) whose swath covers (lat, lng), within 24 h of `from`. Console: `satelliteTracker.nextOverhead(48.85, 2.35)`.
    * Imagers only: with Starlink loaded, a non-imager is always minutes away, which says nothing. */
-  nextOverhead(lat: number, lng: number, from = Date.now()) {
-    const sats = [...this.satellites.values()].flatMap(s => {
+  nextOverhead(lat: number, lng: number, from = Date.now(), ids?: string[]) {
+    const pool = ids ? ids.flatMap(id => this.satellites.get(id) ?? []) : [...this.satellites.values()];
+    const sats = pool.flatMap(s => {
       const swathKm = constellationOf(s.id)?.swathKm;
       return swathKm ? [{ id: s.id, tle1: s.tle1, tle2: s.tle2, halfKm: swathKm / 2 }] : [];
     });
@@ -2897,6 +2904,15 @@ export class DeckSatelliteTracker {
 }
 
 // A swath window as text: '90 min' / '6 h' (short: '90m' / '6h')
+/** How far a time is from now: +12 s, +40 min, +2 h 14, -3 d 4 h. */
+function offsetText(ms: number): string {
+  const sign = ms < 0 ? '−' : '+', a = Math.abs(ms), min = Math.floor(a / 60e3), h = Math.floor(min / 60);
+  if (min < 1) return `${sign}${Math.floor(a / 1e3)} s`;
+  if (h < 1) return `${sign}${min} min`;
+  if (h < 24) return `${sign}${h} h ${String(min % 60).padStart(2, '0')}`;
+  return `${sign}${Math.floor(h / 24)} d ${h % 24} h`;
+}
+
 function spanText(ms: number, short = false): string {
   return ms < 2 * 3600e3 ? `${ms / 60e3}${short ? 'm' : ' min'}` : `${ms / 3600e3}${short ? 'h' : ' h'}`;
 }

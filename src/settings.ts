@@ -1,9 +1,10 @@
 // User settings, kept in this browser. "?" (or H) opens the panel, which also lists the keyboard shortcuts.
 
-export const SPEEDS = [1, 10, 100, 300]; // time-lapse speeds, x real time
+export const SPEEDS = [1, 10, 100]; // clock speeds, x real time
+export const DEFAULT_SPEED = 10; // every view (tracking, constellation time-lapse) opens at it; 1 is live
+export const SPEED_NAMES: Record<number, string> = { 1: 'Real time', 10: 'Fast', 100: 'Faster' };
 
 export const settings = {
-  speed: 10,       // clock speed a view opens at (tracking, constellation time-lapse); 1 = live
   picture: true    // tracked satellite drawn as its picture on the globe instead of a dot
 };
 const KEY = 'fromupthere.settings';
@@ -13,7 +14,7 @@ const save = () => { try { localStorage.setItem(KEY, JSON.stringify(settings)); 
 const SHORTCUTS = [
   ['/', 'Search satellites'],
   ['?', 'Settings and shortcuts'],
-  ['Esc', 'Stop following the satellite'],
+  ['Esc', 'Back to the constellation (else stop following)'],
   ['F', 'Fullscreen'],
   ['G', 'Globe / flat map'],
   ['← →', 'Previous / next satellite of its constellation'],
@@ -27,17 +28,13 @@ export function installSettings() {
   dialog.id = 'settings';
   dialog.innerHTML = `<div>
     <h2>Settings</h2>
-    <label>Time speed it starts at
-      <select name="speed">${SPEEDS.map(v => `<option value="${v}">${v}×${v === 1 ? ' (live)' : ''}</option>`).join('')}</select></label>
     <label><input type="checkbox" name="picture"> Satellite picture on the globe, instead of a dot</label>
     <h2>Keyboard</h2>
     <dl>${SHORTCUTS.map(([k, d]) => `<dt><kbd>${k}</kbd></dt><dd>${d}</dd>`).join('')}</dl>
     <form method="dialog"><button>Close</button></form>
   </div>`;
   document.body.appendChild(dialog);
-  const speed = dialog.querySelector<HTMLSelectElement>('select[name=speed]')!;
   const picture = dialog.querySelector<HTMLInputElement>('input[name=picture]')!;
-  speed.onchange = () => { settings.speed = Number(speed.value); save(); };
   picture.onchange = () => { settings.picture = picture.checked; save(); };
   dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); }); // click on the backdrop
 
@@ -46,7 +43,6 @@ export function installSettings() {
     if (e.key !== '?' && e.key !== 'h' && e.key !== 'H') return;
     e.preventDefault();
     if (dialog.open) return dialog.close();
-    speed.value = String(settings.speed);
     picture.checked = settings.picture;
     dialog.showModal();
   });
