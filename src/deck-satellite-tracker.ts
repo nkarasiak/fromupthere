@@ -636,7 +636,7 @@ export class DeckSatelliteTracker {
     const padding = { top: 0, bottom: 0, left: 0, right: 0 }; // the tracking camera may have moved the axis down
     this.map.flyTo({ center: [lng0, lat0], zoom, pitch, bearing, padding, duration: FLY_DURATION_MS, essential: true });
 
-    // Time-lapse: starts playing right after the fly-in
+    // Time-lapse: plays from the start, the satellites flying during the fly-in too
     this.tlGmst = gmst;
     this.tlPlaying = !fromTrack?.paused;
     this.tlSpeed = fromTrack?.speed ?? fromSpeed ?? settings.speed;
@@ -722,9 +722,11 @@ export class DeckSatelliteTracker {
     this.tlRaf = requestAnimationFrame(this.constellationFrame);
     const dt = this.tlLast ? Math.min(ts - this.tlLast, 100) : 0;
     this.tlLast = ts;
-    const flying = performance.now() < this.flightUntil; // hold the clock still during the fly-in
+    // During the fly-in the satellites already fly (the clock runs), but the Earth's turn is held (moving the map's
+    // centre would fight the flight; at x100 the 3 s flight is ~1 deg of turn, simply skipped)
+    const flying = performance.now() < this.flightUntil;
 
-    if (!flying && this.tlPlaying) {
+    if (this.tlPlaying) {
       this.tlSim += dt * this.tlSpeed;
       if (this.tlSim - this.tlT0 > 24 * 3600e3) this.anchorTimelapse(this.tlSim, true); // re-anchor rings daily
     }

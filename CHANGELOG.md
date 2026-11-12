@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🗺️ Coverage
 - **"Last 90 min coverage ▾"** in the time controls, for an imaging constellation and for a tracked imager with its mates (the landing page too): a menu (or `[` / `]`) picks 90 min, 6 h, 12 h or 24 h of swaths. The passes before the current time are filled in at once (half an hour a frame); longer windows keep every pass at one strength, 90 min fades them. Hover gives the share of the Earth imaged in the window ("63% of the Earth imaged in the last 24 h"; a 0.5° grid, counting only passes where the sun is high enough for optical imagers), once the window is fully drawn.
+- **Constellation fly-in**: the satellites already fly while the camera zooms in (the clock no longer waits for it to land); only the Earth's turn waits.
 - **Swaths paint each spot once**: overlapping passes no longer pile up into solid colour toward the poles; they look as they do at the equator. Passes over the dark side are drawn too (counted only where the satellite can image).
 - **Nothing through the Earth near the limb**: MapLibre's globe depth isn't true depth there, so far-side swaths showed through (a teal cap over the pole); swaths beyond the horizon are now dropped.
 
