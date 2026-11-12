@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🗺️ Constellation coverage
+- **Last 90 min / 6 h / 12 h / 24 h**: a button next to an imaging constellation's count steps through swath windows. The longer ones fill in the passes before the current time (half an hour a frame) and keep every pass at one strength, with the share of the Earth imaged in the window ("Last 24 h: 63% of Earth imaged"; a 0.5° grid counting only passes where the sun is high enough for optical imagers).
+- **Swaths paint each spot once**: overlapping passes no longer pile up into solid colour toward the poles; they look as they do at the equator. Passes over the dark side are drawn too (counted only where the satellite can image).
+- **Nothing through the Earth near the limb**: MapLibre's globe depth isn't true depth there, so far-side swaths showed through (a teal cap over the pole); swaths beyond the horizon are now dropped.
+
 ### 🎬 Landing and tracking show
 - **Landing on EDC-07**: `/` flies in from a small Earth to EDC-07 (YAM-16), tracked live with the rest of EarthDaily's constellation around it (the `/` → `/iss-zarya` redirect is gone).
 - **The tracked satellite's constellation around it**: for imagers (up to 16 satellites; Planet's ~100 stay dots) every mate gets its picture, sensor cone, scan line, swath and name; a click on one, or ← / →, switches to it and keeps the clock. Mates are drawn in perspective but never bigger than the tracked satellite nor below 60 % of it; their swaths at 40 % strength so overlapping tracks don't stack up to solid colour. The tracked satellite is named too.
