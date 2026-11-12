@@ -28,7 +28,7 @@ body.opening #deck-canvas { visibility: hidden; } /* the satellite's dot over th
   pointer-events: auto;
 }
 #top-what { gap: 8px; }
-#top-when { gap: 2px; }
+#top-when { gap: 10px; }
 #cockpit-panel button {
   font: inherit;
   color: inherit;
@@ -58,11 +58,23 @@ body.opening #deck-canvas { visibility: hidden; } /* the satellite's dot over th
 body.tracking-mode .sat-figures { display: flex; }
 .banner-unit { color: #9a9a9a; }
 
-/* When: date and time (click: set them), then play / speed / back to now */
+/* When: a live dot (lit red at now x1, else a grey ring: click to go back live), the clock (click: the date), the speed
+   (click: pause and speeds) in grey, as the units */
 #time-set { font-variant-numeric: tabular-nums; }
-#tl-play, #tl-reset { display: flex; align-items: center; color: #9a9a9a !important; padding: 6px 7px !important; }
-#tl-play:hover, #tl-reset:hover { color: #fff !important; }
-#tl-speed { min-width: 3em; color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+#tl-date:empty { display: none; }
+#cockpit-panel #tl-live { display: flex; padding: 6px; margin-right: -8px; }
+#tl-live i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid #777; box-sizing: border-box; transition: all 0.3s; }
+#tl-live:hover i { border-color: #fff; }
+#cockpit-panel #tl-live.live { cursor: default; }
+#tl-live.live i { background: #ff4d5e; border-color: #ff4d5e; box-shadow: 0 0 6px rgba(255, 77, 94, 0.7); }
+#cockpit-panel #tl-rate, #cockpit-panel #next-over { display: flex; gap: 6px; align-items: center; color: #9a9a9a; }
+#cockpit-panel #tl-rate { min-width: 2.6em; justify-content: center; font-variant-numeric: tabular-nums; }
+#cockpit-panel #tl-rate:hover, #cockpit-panel #next-over:hover { color: #fff; }
+/* Your location (next satellite over you): a small dot, a ring breathing out of it */
+.here-dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; box-shadow: 0 0 6px rgba(0, 212, 255, 0.9); pointer-events: none; }
+.here-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1px solid #00d4ff; animation: here-pulse 2.4s ease-out infinite; }
+@keyframes here-pulse { from { transform: scale(1); opacity: 0.9; } to { transform: scale(5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .here-dot::after { animation: none; transform: scale(2.5); opacity: 0.5; } }
 /* How far back the swaths go: plain grey words, the active one white, underlined in the constellation's colour */
 /* Coverage: the window as plain text like the rest of the bar, the share of the Earth imaged on hover, a menu of windows */
 #tl-window { display: flex; align-items: center; position: relative; }
@@ -82,7 +94,6 @@ body.tracking-mode .sat-figures { display: flex; }
 #cockpit-panel #tl-cover-menu button:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
 #cockpit-panel #tl-cover-menu button[aria-checked="true"] { color: #fff; font-weight: 600; background: color-mix(in srgb, var(--swath, #00d4ff) 15%, transparent); }
 #tl-cover-menu button span { color: var(--swath, #00d4ff); }
-.top-sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.25); margin: 0 6px; }
 
 /* Phones: no date, just the time */
 @media (max-width: 640px) {

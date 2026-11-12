@@ -3,7 +3,7 @@
 export const SPEEDS = [1, 10, 100, 300]; // time-lapse speeds, x real time
 
 export const settings = {
-  speed: 100,      // constellation time-lapse speed it opens at
+  speed: 10,       // clock speed a view opens at (tracking, constellation time-lapse); 1 = live
   picture: true    // tracked satellite drawn as its picture on the globe instead of a dot
 };
 const KEY = 'fromupthere.settings';
@@ -27,8 +27,8 @@ export function installSettings() {
   dialog.id = 'settings';
   dialog.innerHTML = `<div>
     <h2>Settings</h2>
-    <label>Constellation time-lapse speed
-      <select name="speed">${SPEEDS.map(v => `<option value="${v}">×${v}</option>`).join('')}</select></label>
+    <label>Time speed it starts at
+      <select name="speed">${SPEEDS.map(v => `<option value="${v}">${v}×${v === 1 ? ' (live)' : ''}</option>`).join('')}</select></label>
     <label><input type="checkbox" name="picture"> Satellite picture on the globe, instead of a dot</label>
     <h2>Keyboard</h2>
     <dl>${SHORTCUTS.map(([k, d]) => `<dt><kbd>${k}</kbd></dt><dd>${d}</dd>`).join('')}</dl>

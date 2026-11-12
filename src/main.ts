@@ -1,12 +1,12 @@
-import { Map as MapLibreMap, AttributionControl } from 'maplibre-gl';
+import { Map as MapLibreMap, AttributionControl, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { DeckSatelliteTracker } from './deck-satellite-tracker';
+import { DeckSatelliteTracker, PAUSE_ICON, PLAY_ICON } from './deck-satellite-tracker';
 import { URLState } from './url-state';
 import { CommandPalette } from './command-palette';
 import { installNightShading } from './night-layer';
 import { ESRI_TILES, prefetchAround, prefetched } from './tile-prefetch';
 import { openingCamera, OPENING } from './opening';
-import { installSettings, settings } from './settings';
+import { installSettings, settings, SPEEDS } from './settings';
 import { CONSTELLATIONS, Constellation, constellationOf } from './config/satellites';
 import { SearchComponent } from './components/search.component';
 import { CockpitComponent } from './components/cockpit.component';
@@ -40,6 +40,8 @@ class SatelliteTracker3D {
     this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateConstellationSlot(); });
     installSettings();
     this.installTimePicker();
+    this.installSpeedPicker();
+    this.installNextOver();
     this.installShowGroup();
     this.satelliteTracker.setOnSatellitesLoadedCallback(() => {
       // Refresh command palette when satellites are loaded
@@ -341,10 +343,12 @@ class SatelliteTracker3D {
         }
       }
       
-      // Escape key to stop satellite tracking
+      // Escape: from a constellation's satellite back to the whole constellation (as #show-group), else stop tracking
       if (e.key === 'Escape') {
         e.preventDefault();
-        this.satelliteTracker.stopFollowing();
+        const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
+        if (group) this.openConstellation(group, true);
+        else this.satelliteTracker.stopFollowing();
       }
       
       // [ / ]: an imaging constellation's swaths over a shorter / longer past window
@@ -554,33 +558,116 @@ class SatelliteTracker3D {
     });
   }
 
+  // Next satellite over you: a pulsing dot on your location, then the next imager whose swath covers it and when
+  // (the view is left as is)
+  private installNextOver() {
+    const btn = document.getElementById('next-over')!, text = document.getElementById('next-over-text')!;
+    const here = new Marker({ element: Object.assign(document.createElement('div'), { className: 'here-dot' }) });
+    let at: [number, number] | null = null;
+    // Every frame: the constellation view turns the Earth on the map's transform, with no 'move' event to move markers
+    this.map.on('render', () => at && here.setLngLat(at));
+    btn.onclick = () => {
+      text.textContent = '…';
+      navigator.geolocation.getCurrentPosition(({ coords }) => {
+        at = [coords.longitude, coords.latitude];
+        here.setLngLat(at).addTo(this.map);
+        const from = this.satelliteTracker.clockNow();
+        const pass = this.satelliteTracker.nextOverhead(coords.latitude, coords.longitude, from);
+        if (!pass) { text.textContent = 'none in 24 h'; return; }
+        const min = Math.round((pass.t - from) / 60e3);
+        text.textContent = `${pass.name} in ${min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`}`;
+        btn.title = `${pass.name} over you at ${pass.date.toISOString().slice(0, 16).replace('T', ' ')} UTC (${Math.round(pass.distKm)} km off its ground track)`;
+      }, () => { text.textContent = 'no location'; });
+    };
+  }
+
+  // Click the clock: a month calendar and a 24 h time field, in UTC like the clock; Enter or Go jumps there, Now goes
+  // back to live. Days more than RANGE from today are off.
   private installTimePicker() {
     const DAY = 24 * 3600e3, RANGE = 30 * DAY; // ponytail: TLEs drift by tens of km a month from their epoch; widen with archived TLEs
+    const chevron = (d: string) => `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
     const pop = document.createElement('form');
     pop.id = 'time-picker';
     pop.popover = 'auto';
-    pop.innerHTML = `<label>Date and time (UTC) <input type="datetime-local" step="1" required></label>
-      <div><button type="button" value="now">Now</button><button>Go</button></div>`;
+    pop.innerHTML = `<header><button type="button" data-step="-1" aria-label="Previous month">${chevron('M7.5 2.5 4 6l3.5 3.5')}</button>
+      <span></span><button type="button" data-step="1" aria-label="Next month">${chevron('M4.5 2.5 8 6 4.5 9.5')}</button></header>
+      <div class="tp-days"></div>
+      <label>Time <span>UTC</span><input required pattern="([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?" placeholder="hh:mm:ss" inputmode="numeric" autocomplete="off" spellcheck="false"></label>
+      <input type="range" class="tp-slider" min="0" max="86399" step="60" aria-label="Time of day (UTC)">
+      <footer><button type="button" value="now">Now</button><button>Go</button></footer>`;
     document.body.appendChild(pop);
-    const input = pop.querySelector('input')!;
-    const iso = (t: number) => new Date(t).toISOString().slice(0, 19);
+    const title = pop.querySelector('header span')!, days = pop.querySelector<HTMLElement>('.tp-days')!, input = pop.querySelector('input')!;
+    // The time: typed (to the second), or dragged on the slider (to the minute), each following the other
+    const slider = pop.querySelector<HTMLInputElement>('.tp-slider')!;
+    const secs = () => { const [h, m, s = 0] = input.value.split(':').map(Number); return (h * 60 + m) * 60 + s; };
+    slider.oninput = () => { input.value = new Date(Number(slider.value) * 1000).toISOString().slice(11, 19); };
+    input.oninput = () => { if (input.checkValidity()) slider.value = String(secs()); };
+    const [prev, next] = pop.querySelectorAll<HTMLButtonElement>('header button');
+    const midnight = (t: number) => t - (((t % DAY) + DAY) % DAY);
+    let day = 0, month = 0; // the picked day, the month shown: UTC midnight of its 1st (ms)
+    const render = () => {
+      const m = new Date(month), y = m.getUTCFullYear(), mo = m.getUTCMonth(), today = midnight(Date.now());
+      title.textContent = m.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const cells = Array.from({ length: new Date(Date.UTC(y, mo + 1, 0)).getUTCDate() }, (_, i) => {
+        const t = Date.UTC(y, mo, i + 1);
+        return `<button type="button" data-t="${t}"${Math.abs(t - today) > RANGE ? ' disabled' : ''}${t === day ? ' aria-pressed="true"' : ''}${t === today ? ' class="today"' : ''}>${i + 1}</button>`;
+      });
+      days.innerHTML = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => `<span>${d}</span>`).join('')
+        + '<i></i>'.repeat((m.getUTCDay() + 6) % 7) + cells.join(''); // weeks start on Monday
+      prev.disabled = month <= today - RANGE;
+      next.disabled = Date.UTC(y, mo + 1, 1) > today + RANGE;
+    };
+    prev.onclick = next.onclick = e => {
+      const m = new Date(month), step = Number((e.currentTarget as HTMLElement).dataset.step);
+      month = Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + step, 1);
+      render();
+    };
+    days.onclick = e => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-t]');
+      if (b) { day = Number(b.dataset.t); render(); input.focus(); }
+    };
     pop.onsubmit = e => {
       e.preventDefault();
-      const t = Date.parse(input.value + 'Z');
-      if (Number.isNaN(t)) return;
-      this.satelliteTracker.setSimTime(t);
+      this.satelliteTracker.setSimTime(day + secs() * 1000);
       pop.hidePopover();
     };
     pop.querySelector<HTMLButtonElement>('button[value=now]')!.onclick = () => {
       this.satelliteTracker.setSimTime(null);
       pop.hidePopover();
     };
-    document.getElementById('time-set')!.addEventListener('click', () => {
-      input.min = iso(Date.now() - RANGE);
-      input.max = iso(Date.now() + RANGE);
-      input.value = iso(this.satelliteTracker.clockNow());
-      pop.showPopover();
-      input.focus();
+    (document.getElementById('time-set') as HTMLButtonElement).popoverTargetElement = pop; // a click while open closes it
+    pop.addEventListener('beforetoggle', e => {
+      if ((e as ToggleEvent).newState !== 'open') return;
+      const t = this.satelliteTracker.clockNow(), d = new Date(t);
+      day = midnight(t);
+      month = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+      input.value = d.toISOString().slice(11, 19);
+      slider.value = String(secs());
+      render();
+    });
+    pop.addEventListener('toggle', e => { if ((e as ToggleEvent).newState === 'open') { input.focus(); input.select(); } });
+  }
+
+  // Click the speed next to the clock: pause / play and the speeds, in a popover under it (a pick closes it)
+  private installSpeedPicker() {
+    const btn = document.getElementById('tl-rate') as HTMLButtonElement, pop = document.createElement('div');
+    pop.id = 'speed-picker';
+    pop.popover = 'auto';
+    pop.innerHTML = `<button data-play></button>${SPEEDS.map(v => `<button data-speed="${v}">${v}×</button>`).join('')}`;
+    document.body.appendChild(pop);
+    const play = pop.querySelector<HTMLButtonElement>('[data-play]')!, speeds = [...pop.querySelectorAll<HTMLButtonElement>('[data-speed]')];
+    play.onclick = () => { this.satelliteTracker.togglePlay(); pop.hidePopover(); };
+    for (const b of speeds) b.onclick = () => { this.satelliteTracker.setClockSpeed(Number(b.dataset.speed)); pop.hidePopover(); this.updateURL(); };
+    btn.popoverTargetElement = pop; // native toggle: a click on the speed while open closes it (no close-then-reopen)
+    pop.addEventListener('beforetoggle', e => {
+      if ((e as ToggleEvent).newState !== 'open') return;
+      const playing = this.satelliteTracker.isClockPlaying(), speed = this.satelliteTracker.getClockSpeed();
+      play.innerHTML = playing ? PAUSE_ICON : PLAY_ICON;
+      play.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+      for (const b of speeds) b.setAttribute('aria-pressed', String(Number(b.dataset.speed) === speed));
+      const r = btn.getBoundingClientRect();
+      pop.style.top = `${r.bottom + 6}px`;
+      pop.style.right = `${innerWidth - r.right}px`;
     });
   }
 
@@ -698,8 +785,7 @@ class SatelliteTracker3D {
     const bearing = followingSatellite ? (cam.isUserControlledBearing() ? deg(cam.heading) : 'auto') // swaying: still 'auto'
       : deg(this.map.getBearing()) === '0' ? null : deg(this.map.getBearing());
     const speed = this.satelliteTracker.getClockSpeed();
-    const defaultSpeed = this.satelliteTracker.getConstellationName() ? settings.speed : 1;
-    const state = { zoom, pitch, bearing, speed: speed === defaultSpeed ? null : String(speed), satellite: followingSatellite };
+    const state = { zoom, pitch, bearing, speed: speed === settings.speed ? null : String(speed), satellite: followingSatellite };
     if (JSON.stringify(state) === JSON.stringify(this.lastURLState)) return; // nothing the URL keeps has changed
     this.lastURLState = state;
     this.urlState.updateURL(zoom, followingSatellite, followingSatellite || pitch >= 1 ? String(pitch) : null, state.bearing, state.speed);
@@ -707,7 +793,6 @@ class SatelliteTracker3D {
 
   private setupURLSharing() {
     this.urlState.setupURLSharing(this.map, () => this.updateURL());
-    document.getElementById('tl-speed')!.addEventListener('click', () => this.updateURL()); // the camera may not move
   }
 
   private setupCommandPalette() {
