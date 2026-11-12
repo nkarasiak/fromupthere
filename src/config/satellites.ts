@@ -178,19 +178,19 @@ export const resolveSatelliteId = (slug: string): string =>
 // merged; `match`, tested on the satellite id (slug of its name), drops whatever else they catch. Only satellites
 // Celestrak's SATCAT lists as operational are shown, so new launches join and dead ones leave without editing this.
 // swathKm: the main imager's nominal swath; 0 = not an Earth imager (no swath, no sensor cone).
-// radar: a SAR imager, which images day and night (optical swaths are drawn in daylight only)
-export interface Constellation { id: string; name: string; queries: string[]; match: RegExp; color: [number, number, number]; swathKm: number; radar?: boolean }
+// night: images day and night (SAR, or thermal IR); other swaths are drawn in daylight only
+export interface Constellation { id: string; name: string; queries: string[]; match: RegExp; color: [number, number, number]; swathKm: number; night?: boolean }
 export const CONSTELLATIONS: Constellation[] = [
   // Public Earth observation
   { id: 'sentinel-2', name: 'Sentinel-2', queries: ['SENTINEL-2'], match: /^sentinel-2[a-z]$/, color: [90, 150, 255], swathKm: 290 }, // MSI
-  { id: 'sentinel-1', name: 'Sentinel-1', queries: ['SENTINEL-1'], match: /^sentinel-1[a-z]$/, color: [170, 130, 255], swathKm: 250, radar: true }, // IW mode
+  { id: 'sentinel-1', name: 'Sentinel-1', queries: ['SENTINEL-1'], match: /^sentinel-1[a-z]$/, color: [170, 130, 255], swathKm: 250, night: true }, // IW mode
   { id: 'sentinel-3', name: 'Sentinel-3', queries: ['SENTINEL-3'], match: /^sentinel-3[a-z]$/, color: [80, 200, 170], swathKm: 1270 }, // OLCI
   { id: 'landsat', name: 'Landsat', queries: ['LANDSAT'], match: /^landsat-\d+$/, color: [255, 176, 64], swathKm: 185 },
   { id: 'edc', name: 'EarthDaily', queries: ['YAM-'], match: /^yam-1[0-7]$/, color: [0, 214, 255], swathKm: 240 }, // EDC-01..08; YAM-2..9 are other Loft Orbital buses
-  { id: 'modis', name: 'MODIS', queries: ['TERRA', 'AQUA'], match: /^(terra|aqua)$/, color: [120, 220, 120], swathKm: 2330 },
-  { id: 'viirs', name: 'VIIRS (JPSS)', queries: ['SUOMI NPP', 'JPSS'], match: /^(suomi-npp|noaa-\d+-jpss-\d+)$/, color: [255, 120, 90], swathKm: 3060 },
-  { id: 'metop', name: 'MetOp', queries: ['METOP'], match: /^metop-[a-c]$/, color: [230, 200, 90], swathKm: 2900 }, // AVHRR (Metop-SG has none)
-  { id: 'fengyun-3', name: 'Fengyun-3', queries: ['FENGYUN 3'], match: /^fengyun-3[a-z]$/, color: [240, 90, 90], swathKm: 2900 }, // MERSI
+  { id: 'modis', name: 'MODIS', queries: ['TERRA', 'AQUA'], match: /^(terra|aqua)$/, color: [120, 220, 120], swathKm: 2330, night: true }, // thermal bands at night
+  { id: 'viirs', name: 'VIIRS (JPSS)', queries: ['SUOMI NPP', 'JPSS'], match: /^(suomi-npp|noaa-\d+-jpss-\d+)$/, color: [255, 120, 90], swathKm: 3060, night: true },
+  { id: 'metop', name: 'MetOp', queries: ['METOP'], match: /^metop-[a-c]$/, color: [230, 200, 90], swathKm: 2900, night: true }, // AVHRR (Metop-SG has none)
+  { id: 'fengyun-3', name: 'Fengyun-3', queries: ['FENGYUN 3'], match: /^fengyun-3[a-z]$/, color: [240, 90, 90], swathKm: 2900, night: true }, // MERSI
   { id: 'cbers', name: 'CBERS / Amazonia', queries: ['CBERS', 'AMAZONIA'], match: /^(cbers|amazonia)-/, color: [100, 210, 90], swathKm: 866 }, // WFI
   // Commercial optical
   { id: 'planet-dove', name: 'Planet SuperDove', queries: ['FLOCK'], match: /^flock-/, color: [80, 190, 255], swathKm: 32 },
@@ -205,16 +205,16 @@ export const CONSTELLATIONS: Constellation[] = [
   { id: 'superview', name: 'SuperView', queries: ['SUPERVIEW'], match: /^superview-/, color: [255, 160, 160], swathKm: 12 },
   { id: 'kompsat', name: 'KOMPSAT', queries: ['KOMPSAT'], match: /^(arirang-(?!5)|kompsat-)/, color: [100, 170, 255], swathKm: 15 }, // optical ones (KOMPSAT-5 is SAR)
   // SAR
-  { id: 'iceye', name: 'ICEYE', queries: ['ICEYE'], match: /^iceye-/, color: [150, 220, 255], swathKm: 30, radar: true }, // stripmap
-  { id: 'capella', name: 'Capella', queries: ['CAPELLA'], match: /^capella-/, color: [255, 200, 120], swathKm: 10, radar: true },
-  { id: 'umbra', name: 'Umbra', queries: ['UMBRA'], match: /^umbra-/, color: [180, 180, 255], swathKm: 10, radar: true },
-  { id: 'cosmo-skymed', name: 'COSMO-SkyMed', queries: ['COSMO-SKYMED', 'CSG'], match: /^(cosmo-skymed|csg)-/, color: [120, 200, 255], swathKm: 40, radar: true }, // Himage stripmap
-  { id: 'terrasar-x', name: 'TerraSAR-X / PAZ', queries: ['TERRASAR-X', 'TANDEM-X', 'PAZ'], match: /^(terrasar-x|tandem-x|paz)$/, color: [255, 220, 100], swathKm: 30, radar: true },
-  { id: 'rcm', name: 'RADARSAT Constellation', queries: ['RCM'], match: /^rcm-\d+$/, color: [255, 100, 100], swathKm: 350, radar: true }, // medium resolution 50 m
-  { id: 'saocom', name: 'SAOCOM', queries: ['SAOCOM'], match: /^saocom-/, color: [130, 200, 255], swathKm: 320, radar: true }, // TOPSAR wide
-  { id: 'alos', name: 'ALOS', queries: ['ALOS'], match: /^alos-\d/, color: [255, 150, 200], swathKm: 200, radar: true }, // ALOS-4 stripmap (ALOS-2: 50)
-  { id: 'strix', name: 'Synspective StriX', queries: ['STRIX'], match: /^strix-/, color: [150, 255, 180], swathKm: 20, radar: true },
-  { id: 'iqps', name: 'iQPS', queries: ['QPS-SAR'], match: /^qps-sar-/, color: [255, 180, 80], swathKm: 7, radar: true },
+  { id: 'iceye', name: 'ICEYE', queries: ['ICEYE'], match: /^iceye-/, color: [150, 220, 255], swathKm: 30, night: true }, // stripmap
+  { id: 'capella', name: 'Capella', queries: ['CAPELLA'], match: /^capella-/, color: [255, 200, 120], swathKm: 10, night: true },
+  { id: 'umbra', name: 'Umbra', queries: ['UMBRA'], match: /^umbra-/, color: [180, 180, 255], swathKm: 10, night: true },
+  { id: 'cosmo-skymed', name: 'COSMO-SkyMed', queries: ['COSMO-SKYMED', 'CSG'], match: /^(cosmo-skymed|csg)-/, color: [120, 200, 255], swathKm: 40, night: true }, // Himage stripmap
+  { id: 'terrasar-x', name: 'TerraSAR-X / PAZ', queries: ['TERRASAR-X', 'TANDEM-X', 'PAZ'], match: /^(terrasar-x|tandem-x|paz)$/, color: [255, 220, 100], swathKm: 30, night: true },
+  { id: 'rcm', name: 'RADARSAT Constellation', queries: ['RCM'], match: /^rcm-\d+$/, color: [255, 100, 100], swathKm: 350, night: true }, // medium resolution 50 m
+  { id: 'saocom', name: 'SAOCOM', queries: ['SAOCOM'], match: /^saocom-/, color: [130, 200, 255], swathKm: 320, night: true }, // TOPSAR wide
+  { id: 'alos', name: 'ALOS', queries: ['ALOS'], match: /^alos-\d/, color: [255, 150, 200], swathKm: 200, night: true }, // ALOS-4 stripmap (ALOS-2: 50)
+  { id: 'strix', name: 'Synspective StriX', queries: ['STRIX'], match: /^strix-/, color: [150, 255, 180], swathKm: 20, night: true },
+  { id: 'iqps', name: 'iQPS', queries: ['QPS-SAR'], match: /^qps-sar-/, color: [255, 180, 80], swathKm: 7, night: true },
   // Not Earth imagers: communications, navigation, geostationary weather
   { id: 'starlink', name: 'Starlink', queries: ['STARLINK'], match: /^starlink-\d+$/, color: [79, 209, 255], swathKm: 0 },
   { id: 'oneweb', name: 'OneWeb', queries: ['ONEWEB'], match: /^oneweb-\d+$/, color: [80, 140, 255], swathKm: 0 },

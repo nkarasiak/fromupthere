@@ -89,7 +89,7 @@ const SHELL_COLORS = [[79, 209, 255], [255, 179, 71], [255, 112, 168], [184, 140
 // Sensor cone from each satellite to both ends of its scan line, in bands fading toward the ground
 const CONE_ALPHA = [70, 50, 34, 22];
 const LABEL_LIFT_PX = 24; // satellite labels sit this far above their dot
-// Optical imagers only image the day side: swaths are drawn only where the sun is at least this high at the nadir.
+// Optical imagers only image the day side (SAR and thermal ones: night too): swaths are drawn only where the sun is at least this high at the nadir.
 // ponytail: fixed threshold and nadir-only swath; off-nadir pointing (which can fill gaps) isn't modelled.
 const MIN_SUN_ELEV_DEG = 10;
 const TRACKED_PAST_MS = 20 * 60e3;  // tracking view: ground track drawn 20 min behind the satellite...
@@ -108,7 +108,7 @@ export class DeckSatelliteTracker {
   private constellationOverlay?: MapboxOverlay;
   private constellationColor: [number, number, number] = [0, 214, 255];
   private constellationSwathKm = 0;
-  private constellationRadar = false; // radar images day and night: no daylight cut on its swaths
+  private constellationNight = false; // SAR and thermal imagers image day and night: no daylight cut on its swaths
   private constellationOrbitR = 1; // highest member's orbit radius, in Earth radii
   private constellationName = '';
   // Constellation time-lapse. The camera is fixed in INERTIAL space (looking along the orbit normal), so the Earth visibly
@@ -526,7 +526,7 @@ export class DeckSatelliteTracker {
     this.constellation = ids;
     this.constellationColor = group.color;
     this.constellationSwathKm = group.swathKm;
-    this.constellationRadar = !!group.radar;
+    this.constellationNight = !!group.night;
     this.constellationName = group.name;
     this.dense = ids.length >= DENSE_MIN ? this.buildDense(ids) : null;
     this.tlHover = this.tlPinned = -1;
@@ -764,7 +764,7 @@ export class DeckSatelliteTracker {
         const pts = Array.from({ length: n + 2 }, (_, j) => {
           const date = new Date(t0 + j * TRACK_SAMPLE_MS);
           const p = this.calculateSatellitePosition(s.tle1, s.tle2, id, date);
-          const lit = this.constellationRadar || SolarCalculator.calculateSolarElevation(p.latitude, p.longitude, date) >= MIN_SUN_ELEV_DEG;
+          const lit = this.constellationNight || SolarCalculator.calculateSolarElevation(p.latitude, p.longitude, date) >= MIN_SUN_ELEV_DEG;
           return { lng: p.longitude, lat: p.latitude, lit };
         });
         const out = pts.slice(0, n + 1).map((p, j) => ({
@@ -2129,7 +2129,7 @@ export class DeckSatelliteTracker {
         const q = this.calculateSatellitePosition(s.tle1, s.tle2, id, date);
         line.push(unwrapLng(q.longitude, line[line.length - 3]), q.latitude, 0);
         const elev = SolarCalculator.calculateSolarElevation(q.latitude, q.longitude, date);
-        light.push(group?.radar ? 1 : Math.max(0, Math.min(1, elev / MIN_SUN_ELEV_DEG)));
+        light.push(group?.night ? 1 : Math.max(0, Math.min(1, elev / MIN_SUN_ELEV_DEG)));
       }
       const heading = light.map((_, k) => { // ground track heading at each sample
         const a = Math.min(k, light.length - 2);
