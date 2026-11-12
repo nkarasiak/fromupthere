@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⏱️ Time bar and next pass
+- **Next satellite over you**: the location button (top right) asks for your location, marks it with a pulsing dot and names the next imager whose swath covers it, and when ("EDC-03 in 2 h 14"; hover: the UTC time and how far off its ground track). Also from the console: `satelliteTracker.nextOverhead(lat, lng)`.
+- **A calmer time bar**: a live dot (red at now, 1×; a grey ring otherwise, a click goes back to live), the clock (a click: date and time), the speed as `10×` or a pause sign (a click: pause and speeds). The pause, ×100 and back-to-now buttons and the separators are gone; the date shows only when it isn't today.
+- **Date and time picker in the site's style**: a month calendar (weeks from Monday, ±30 days), a 24 h UTC time field and a time-of-day slider, instead of the browser's picker (which overflowed the screen and showed 12 h time).
+- **10× by default**, tracking too (settings: "Time speed it starts at"; 1× is live).
+- **Esc** from a constellation's satellite goes back to the whole constellation.
+
 ### 🗺️ Coverage
 - **"Last 90 min coverage ▾"** in the time controls, for an imaging constellation and for a tracked imager with its mates (the landing page too): a menu (or `[` / `]`) picks 90 min, 6 h, 12 h or 24 h of swaths. The passes before the current time are filled in at once (half an hour a frame); longer windows keep every pass at one strength, 90 min fades them. Hover gives the share of the Earth imaged in the window ("63% of the Earth imaged in the last 24 h"; a 0.5° grid, counting only passes where the sun is high enough for optical imagers), once the window is fully drawn.
 - **Constellation fly-in**: the satellites already fly while the camera zooms in (the clock no longer waits for it to land); only the Earth's turn waits.
