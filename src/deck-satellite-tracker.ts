@@ -506,6 +506,9 @@ export class DeckSatelliteTracker {
 
   // Show every satellite of a constellation at once: real altitude, real orbit rings, whole orbit in view, and a
   // time-lapse (Earth turning, ground tracks and swaths painted) that shows how the constellation covers the planet.
+  /** Start fetching a constellation's orbits now (showConstellation then picks up the same request) */
+  prefetchGroup(group: Constellation) { this.satelliteDataFetcher.fetchGroup(group); }
+
   async showConstellation(group: Constellation, pitch = 0): Promise<boolean> {
     const configs = await this.satelliteDataFetcher.fetchGroup(group);
     const ids = configs.filter(c => this.addSatelliteFromConfig(c)).map(c => c.id);

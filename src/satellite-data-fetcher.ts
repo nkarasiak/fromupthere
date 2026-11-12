@@ -190,7 +190,15 @@ export class SatelliteDataFetcher {
    * SATCAT lists them as active (+ P B S X). Cached 6h, persisted (Celestrak answers 403 to a repeat within 2h);
    * on a network error the last result is used even if expired.
    */
-  async fetchGroup(group: Constellation): Promise<SatelliteConfig[]> {
+  // One request per group at a time: the page asks for the landing's group at start (main.ts), the view asks again on map load
+  private pending = new Map<string, Promise<SatelliteConfig[]>>();
+  fetchGroup(group: Constellation): Promise<SatelliteConfig[]> {
+    const p = this.pending.get(group.id) ?? this.loadGroup(group).finally(() => this.pending.delete(group.id));
+    this.pending.set(group.id, p);
+    return p;
+  }
+
+  private async loadGroup(group: Constellation): Promise<SatelliteConfig[]> {
     const key = `group:${group.id}`;
     let tles = this.cacheExpiry.get(key)! > Date.now() ? this.cache.get(key) : undefined;
     if (!tles) {

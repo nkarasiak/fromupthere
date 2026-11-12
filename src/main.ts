@@ -34,6 +34,9 @@ class SatelliteTracker3D {
   constructor() {
     this.initializeMap();
     this.satelliteTracker = new DeckSatelliteTracker(this.map);
+    // The constellation's orbits (Celestrak, ~0.8 s on a first visit) load while the map starts, not after
+    const group = CONSTELLATIONS.find(g => g.id === this.urlState.getInitialGroup());
+    if (group) this.satelliteTracker.prefetchGroup(group);
     this.satelliteTracker.setOnTrackingChangeCallback(() => { this.updateURL(); this.updateConstellationSlot(); });
     installSettings();
     this.installTimePicker();
@@ -385,7 +388,7 @@ class SatelliteTracker3D {
         return;
       }
 
-      // The landing page: EDC-07 (YAM-16), with the rest of EarthDaily's constellation imaging around it
+      // A satellite link (the landing page is the EDC constellation, url-state.ts getInitialGroup)
       const satelliteToTrack = this.urlState.getInitialSatellite() ?? 'yam-16';
       
       // Enable external satellite loading for search functionality

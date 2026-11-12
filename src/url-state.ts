@@ -110,8 +110,10 @@ export class URLState {
     return 0; // Default for homepage
   }
 
+  // The landing page (no satellite, no place in the URL) is EarthDaily's constellation, as ?group=edc
   getInitialGroup(): string | null {
-    return new URLSearchParams(window.location.search).get('group');
+    const group = new URLSearchParams(window.location.search).get('group');
+    return group ?? (this.getInitialSatellite() || this.getInitialCoordinates() ? null : 'edc');
   }
 
   navigateToGroup(groupId: string) {
