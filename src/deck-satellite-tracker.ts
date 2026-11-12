@@ -15,6 +15,8 @@ import { LODManager, ViewportInfo, SatelliteForLOD } from './lod-manager';
 import { OrbitalInterpolator, SatellitePosition } from './orbital-interpolator';
 import { SmoothTracker, PredictivePosition, predictPosition } from './smooth-tracker';
 import { prefetchAround } from './tile-prefetch';
+import { stripCells, coveredShare } from './coverage';
+import { HorizonExtension } from './horizon-extension';
 import { SmoothCamera, framing } from './smooth-camera';
 
 export interface SatelliteData {
@@ -75,6 +77,9 @@ const TRACK_SAMPLE_MS = 10000;      // ground track sampled every 10 simulated s
 const TRACK_CHUNK_MS = 30 * 60e3;   // ...computed ahead in 30 min chunks; the GPU fades and cuts it at the current time
 const TRACK_FADE_MS = 90 * 60e3;     // past swaths fade out over ~1 orbit: older passes have drifted away from the
                                     // orbit with the turning Earth and read as swaths with no satellite over them
+// Coverage: swaths of the last 90 min (fading), or of the last 6, 12 or 24 h (all kept, to see how much is imaged).
+// ponytail: a 24 h window keeps every quad in memory; fine for tens of satellites, heavy for hundreds (SuperDoves).
+const COVER_WINDOWS_MS = [TRACK_FADE_MS, 6 * 3600e3, 12 * 3600e3, 24 * 3600e3];
 // Ground features float this far above the surface: a straight segment between two samples sags below the curved
 // globe (and below MapLibre's coarse low-zoom globe mesh), which drew the swath as a dashed sawtooth.
 const GROUND_LIFT_M = 8000;
@@ -89,7 +94,8 @@ const SHELL_COLORS = [[79, 209, 255], [255, 179, 71], [255, 112, 168], [184, 140
 // Sensor cone from each satellite to both ends of its scan line, in bands fading toward the ground
 const CONE_ALPHA = [70, 50, 34, 22];
 const LABEL_LIFT_PX = 24; // satellite labels sit this far above their dot
-// Optical imagers only image the day side (SAR and thermal ones: night too): swaths are drawn only where the sun is at least this high at the nadir.
+// Optical imagers only image the day side (SAR and thermal ones: night too): where the sun is at least this high at the
+// nadir. The constellation view draws the swath everywhere but counts only those passes as covered.
 // ponytail: fixed threshold and nadir-only swath; off-nadir pointing (which can fill gaps) isn't modelled.
 const MIN_SUN_ELEV_DEG = 10;
 const TRACKED_PAST_MS = 20 * 60e3;  // tracking view: ground track drawn 20 min behind the satellite...
@@ -100,6 +106,9 @@ const SCAN_ARC_N = 24;
 const SWATH_ACROSS_N = 8;           // wide swaths: 8 quads across, so the strip follows the Earth's curvature              // scan line / cone foot: 24 steps across the swath     // tracked satellite picture, relative to getSatelliteImageSize
 const SCAN_MS = 4 * 60e3; // the lit footprint under each satellite covers its last 4 simulated minutes
 const AGE_FILTER = new DataFilterExtension({ filterSize: 1 }); // swath quads cut at the current time and faded by age on the GPU
+const HORIZON = new HorizonExtension(); // ground features: not from behind the Earth
+
+type Quad = { polygon: number[]; t: number }; // a swath quad and when it is imaged (s since tlTrackBase)
 
 export class DeckSatelliteTracker {
   private constellation: string[] | null = null; // member ids while viewing a constellation overview
@@ -136,9 +145,11 @@ export class DeckSatelliteTracker {
   // GPU, so not ms since epoch).
   // ponytail: float32 seconds stay sub-second for ~3 months of simulated time (~20 h at x100); re-base at the daily
   // re-anchor if anyone runs it longer.
-  private tlChunks: Array<{ start: number; end: number; rows: Array<Array<{ row: number[][]; lit: boolean }>>; quads: Array<{ polygon: number[]; t: number }> }> = [];
+  private tlChunks: Array<{ start: number; end: number; rows: Array<Array<{ row: number[][]; lit: boolean }>>; quads: Quad[]; cells: number[]; ts: number[] }> = [];
   private tlTrackBase = 0;
-  private tlTrackEnd = 0;  // simulated time the tracks are computed up to
+  private tlTrackEnd = 0;
+  private tlWindowMs = TRACK_FADE_MS; // swaths shown over this past window (COVER_WINDOWS_MS)
+  private coverAt = 0;  // simulated time the tracks are computed up to
   private tlScanArcs: number[][][] = []; // scan line across the track under each satellite, along the ground
   private tlHeads: number[][] = []; // swath quads from each satellite's last track row up to its scan line
   // Satellite markers: ONE array, updated in place every frame. A new data array per frame made deck rebuild the
@@ -467,6 +478,9 @@ export class DeckSatelliteTracker {
       // the whole catalogue)
       this.constellationOverlay = new MapboxOverlay({
         interleaved: true, layers: [], pickingRadius: 14,
+        // Clear the stencil the swaths paint each pixel once with (MapLibre's tile masks are done with by now: the
+        // overlay draws last)
+        onBeforeRender: ({ gl }) => { gl.stencilMask(0xff); gl.clearStencil(0); gl.clear(gl.STENCIL_BUFFER_BIT); },
         onClick: info => {
           if (this.dense) this.tlPinned = info.layer?.id === 'constellation-dense' ? info.index : -1; // shows its plane: no tracking
           else if (this.constellation && info.object?.id) this.followSatellite(info.object.id);
@@ -494,6 +508,7 @@ export class DeckSatelliteTracker {
     if (this.dense) for (const id of this.constellation!) if (id !== keep) this.satellites.delete(id);
     this.constellation = null;
     this.dense = null;
+    document.getElementById('tl-cover')!.hidden = true;
     this.tlHover = this.tlPinned = -1;
     this.constellationLayers = [];
     cancelAnimationFrame(this.tlRaf);
@@ -527,6 +542,7 @@ export class DeckSatelliteTracker {
     this.constellationColor = group.color;
     this.constellationSwathKm = group.swathKm;
     this.constellationNight = !!group.night;
+    document.getElementById('tl-cover')!.hidden = !group.swathKm;
     this.constellationName = group.name;
     this.dense = ids.length >= DENSE_MIN ? this.buildDense(ids) : null;
     this.tlHover = this.tlPinned = -1;
@@ -754,31 +770,17 @@ export class DeckSatelliteTracker {
       arcs[k] = acrossTrack(p.longitude, p.latitude, hd, halfKm, m, GROUND_LIFT_M);
     });
     this.tlScanArcs = arcs;
-    // Keep the swaths computed ahead of the satellites; drop chunks that have fully faded
-    if (halfKm && this.tlTrackEnd - this.tlSim < TRACK_CHUNK_MS / 2) {
-      const t0 = this.tlTrackEnd, t1 = t0 + TRACK_CHUNK_MS, n = TRACK_CHUNK_MS / TRACK_SAMPLE_MS;
-      const quads: Array<{ polygon: number[]; t: number }> = [];
-      const rows = this.constellation.map(id => {
-        const s = this.satellites.get(id)!;
-        // samples 0..n (the first repeats the previous chunk's last: no gap), plus one past the end for the last heading
-        const pts = Array.from({ length: n + 2 }, (_, j) => {
-          const date = new Date(t0 + j * TRACK_SAMPLE_MS);
-          const p = this.calculateSatellitePosition(s.tle1, s.tle2, id, date);
-          const lit = this.constellationNight || SolarCalculator.calculateSolarElevation(p.latitude, p.longitude, date) >= MIN_SUN_ELEV_DEG;
-          return { lng: p.longitude, lat: p.latitude, lit };
-        });
-        const out = pts.slice(0, n + 1).map((p, j) => ({
-          lit: p.lit, row: acrossTrack(p.lng, p.lat, bearingDeg([p.lng, p.lat], [pts[j + 1].lng, pts[j + 1].lat]), halfKm, m, GROUND_LIFT_M)
-        }));
-        out.slice(1).forEach((b, j) => { // only where it images (optical: sun high enough at the nadir)
-          if (!b.lit || !out[j].lit) return;
-          const t = (t0 + (j + 1) * TRACK_SAMPLE_MS - this.tlTrackBase) / 1000;
-          for (const polygon of stripQuads(out[j].row, b.row)) quads.push({ polygon, t });
-        });
-        return out;
-      });
-      this.tlChunks = [...this.tlChunks.filter(c => this.tlSim - c.end < TRACK_FADE_MS), { start: t0, end: t1, rows, quads }];
-      this.tlTrackEnd = t1;
+    // Keep the swaths computed ahead of the satellites and, for a longer window, back over it (a chunk a frame); drop
+    // chunks older than the window
+    if (halfKm) {
+      const ahead = this.tlTrackEnd - this.tlSim < TRACK_CHUNK_MS / 2;
+      const first = this.tlChunks.reduce((a, c) => Math.min(a, c.start), this.tlTrackEnd);
+      if (ahead || (this.tlWindowMs > TRACK_FADE_MS && first > this.tlSim - this.tlWindowMs)) {
+        const chunk = this.swathChunk(ahead ? this.tlTrackEnd : first - TRACK_CHUNK_MS, halfKm, m);
+        if (ahead) this.tlTrackEnd = chunk.end;
+        this.tlChunks = [...this.tlChunks.filter(c => this.tlSim - c.end < this.tlWindowMs), chunk];
+      }
+      if (performance.now() - this.coverAt > 500) this.showCoverage();
     }
     // The chunks stop at the last whole sample: the swath from there up to each scan line is rebuilt every frame
     this.tlHeads = [];
@@ -786,7 +788,7 @@ export class DeckSatelliteTracker {
     const chunk = this.tlChunks.find(c => c.start <= tk && tk < c.end);
     chunk?.rows.forEach((rs, k) => {
       const r = rs[Math.round((tk - chunk.start) / TRACK_SAMPLE_MS)];
-      if (r.lit && arcs[k]) this.tlHeads.push(...stripQuads(r.row, arcs[k]));
+      if (arcs[k]) this.tlHeads.push(...stripQuads(r.row, arcs[k]));
     });
 
     const now = performance.now();
@@ -798,6 +800,48 @@ export class DeckSatelliteTracker {
     this.showClock(this.tlSim);
     this.renderConstellation();
   };
+
+  // Swaths from t0 for 30 min: rows across each ground track, quads between lit rows, and the grid cells they cover
+  private swathChunk(t0: number, halfKm: number, m: number) {
+    const t1 = t0 + TRACK_CHUNK_MS, n = TRACK_CHUNK_MS / TRACK_SAMPLE_MS;
+    const quads: Quad[] = [];
+    const cells: number[] = [], ts: number[] = []; // grid cells imaged, and when (as quads' t): the share of the Earth covered
+    const rows = this.constellation!.map(id => {
+      const s = this.satellites.get(id)!;
+      // samples 0..n (the first repeats the previous chunk's last: no gap), plus one past the end for the last heading
+      const pts = Array.from({ length: n + 2 }, (_, j) => {
+        const date = new Date(t0 + j * TRACK_SAMPLE_MS);
+        const p = this.calculateSatellitePosition(s.tle1, s.tle2, id, date);
+        const lit = this.constellationNight || SolarCalculator.calculateSolarElevation(p.latitude, p.longitude, date) >= MIN_SUN_ELEV_DEG;
+        return { lng: p.longitude, lat: p.latitude, lit };
+      });
+      const out = pts.slice(0, n + 1).map((p, j) => ({
+        lit: p.lit, row: acrossTrack(p.lng, p.lat, bearingDeg([p.lng, p.lat], [pts[j + 1].lng, pts[j + 1].lat]), halfKm, m, GROUND_LIFT_M)
+      }));
+      out.slice(1).forEach((b, j) => {
+        const lit = b.lit && out[j].lit; // images there (optical: sun high enough at the nadir); drawn either way
+        const t = (t0 + (j + 1) * TRACK_SAMPLE_MS - this.tlTrackBase) / 1000;
+        for (const polygon of stripQuads(out[j].row, b.row)) quads.push({ polygon, t });
+        if (!lit) return; // ...and not counted as covered
+        stripCells([pts[j].lng, pts[j].lat], [pts[j + 1].lng, pts[j + 1].lat], halfKm, cells);
+        while (ts.length < cells.length) ts.push(t);
+      });
+      return out;
+    });
+    return { start: t0, end: t1, rows, quads, cells, ts };
+  }
+
+  // Coverage button: the swath window shown, and the share of the Earth imaged in it
+  private showCoverage() {
+    this.coverAt = performance.now();
+    const btn = document.getElementById('tl-cover')!;
+    const tNow = (this.tlSim - this.tlTrackBase) / 1000;
+    const pct = Math.round(100 * coveredShare(this.tlChunks, tNow - this.tlWindowMs / 1000, tNow));
+    const span = (ms: number) => (ms < 2 * 3600e3 ? `${ms / 60e3} min` : `${ms / 3600e3} h`);
+    const next = COVER_WINDOWS_MS[(COVER_WINDOWS_MS.indexOf(this.tlWindowMs) + 1) % COVER_WINDOWS_MS.length];
+    btn.textContent = `Last ${span(this.tlWindowMs)}: ${pct}% of Earth imaged`;
+    btn.title = `Swaths of the last ${span(this.tlWindowMs)} cover ${pct}% of the Earth's surface: click for the last ${span(next)}`;
+  }
 
   // Orbit rings in the current Earth-fixed frame. Faint, with no bright trail: at 600 km up, a trail projects onto
   // the swath and reads as a centre line that isn't on the ground.
@@ -952,25 +996,33 @@ export class DeckSatelliteTracker {
     const copies = [['', onTop, inFront], ['-limb', occluded, atLimb]] as const;
     // Swaths: the precomputed quads, cut at the current time and faded by age on the GPU (smooth, nothing rebuilt per
     // frame), one layer per chunk so a new chunk doesn't re-tessellate the others. A faint one for past passes, a bright
-    // one for what each satellite is imaging now. No depth writes, so overlapping translucent swaths blend instead of
-    // hiding each other in jagged steps (still hidden by the globe).
+    // one for what each satellite is imaging now. No depth writes: overlapping swaths at the same height hid each other
+    // in jagged steps (still hidden by the globe).
+    // Past passes paint each pixel once (stencil, cleared every frame in onBeforeRender): where passes overlap, toward
+    // the poles, the swath looks as it does at the equator instead of piling up. Newest first, so a faded pass doesn't
+    // take a pixel a fresher one covers.
     const tNow = (this.tlSim - this.tlTrackBase) / 1000;
-    const swath = (c: typeof this.tlChunks[number], id: string, alpha: number, fadeMs: number) =>
+    const once = { ...lines, stencilWriteMask: 0xff, stencilCompare: 'equal' as const, stencilPassOperation: 'increment-clamp' as const,
+      stencilFailOperation: 'keep' as const, stencilDepthFailOperation: 'keep' as const };
+    const swath = (c: typeof this.tlChunks[number], data: Quad[], id: string, alpha: number, fadeMs: number, softMs = 0, parameters: object = lines) =>
       new SolidPolygonLayer<any, DataFilterExtensionProps<any>>({
-        id: `${id}-${c.start}`, data: c.quads, parameters: lines, _normalize: false, positionFormat: 'XYZ',
+        id: `${id}-${c.start}`, data, parameters, _normalize: false, positionFormat: 'XYZ',
         getPolygon: (d: any) => d.polygon, getFillColor: [r, g, b, alpha],
-        extensions: [AGE_FILTER], getFilterValue: (d: any) => d.t, filterRange: [tNow - fadeMs / 1000, tNow], filterSoftRange: [tNow, tNow]
+        extensions: [AGE_FILTER, HORIZON], getFilterValue: (d: any) => d.t, filterRange: [tNow - fadeMs / 1000, tNow], filterSoftRange: [tNow - softMs / 1000, tNow]
       });
+    const cover = this.tlWindowMs > TRACK_FADE_MS; // a coverage window: every pass alike, not fading
+    const [alpha, soft] = cover ? [64, this.tlWindowMs] : [40, 0];
+    const newest = [...this.tlChunks].sort((a, b) => b.start - a.start);
     this.constellationLayers = [
       ...(this.constellationSwathKm ? [ // an imager: its swaths, scan line and sensor cone
-      ...this.tlChunks.map(c => swath(c, 'constellation-swath', 40, TRACK_FADE_MS)),
-      ...this.tlChunks.filter(c => c.end > this.tlSim - SCAN_MS && c.start <= this.tlSim).map(c => swath(c, 'constellation-scan', 170, SCAN_MS)),
+      ...newest.map(c => swath(c, c.quads, 'constellation-swath', alpha, this.tlWindowMs, soft, once)),
+      ...this.tlChunks.filter(c => c.end > this.tlSim - SCAN_MS && c.start <= this.tlSim).map(c => swath(c, c.quads, 'constellation-scan', 170, SCAN_MS)),
       new SolidPolygonLayer({ // both of them, up to the scan line
-        id: 'constellation-swath-head', data: this.tlHeads, parameters: lines, _normalize: false, positionFormat: 'XYZ',
+        id: 'constellation-swath-head', data: this.tlHeads, parameters: lines, _normalize: false, positionFormat: 'XYZ', extensions: [HORIZON],
         getPolygon: (d: any) => d, getFillColor: [r, g, b, 184]
       }),
       new PathLayer({ // the scan line across the track right under each satellite
-        id: 'constellation-scanline', data: this.tlScanArcs.filter(Boolean), _pathType: 'open', parameters: lines, positionFormat: 'XYZ',
+        id: 'constellation-scanline', data: this.tlScanArcs.filter(Boolean), _pathType: 'open', parameters: lines, positionFormat: 'XYZ', extensions: [HORIZON],
         getPath: (d: any) => d.flat(), getColor: [255, 255, 255, 230], getWidth: 2.5, widthUnits: 'pixels'
       }),
       new SolidPolygonLayer({ // sensor cones: real 3D surfaces, hidden by the Earth through the depth test
@@ -2393,6 +2445,10 @@ export class DeckSatelliteTracker {
       this.syncTimeControls();
     };
     $('tl-reset').onclick = () => this.setSimTime(null);
+    $('tl-cover').onclick = () => {
+      this.tlWindowMs = COVER_WINDOWS_MS[(COVER_WINDOWS_MS.indexOf(this.tlWindowMs) + 1) % COVER_WINDOWS_MS.length];
+      this.showCoverage();
+    };
     this.syncTimeControls();
   }
 

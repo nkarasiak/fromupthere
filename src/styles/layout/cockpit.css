@@ -50,6 +50,9 @@ body.opening #deck-canvas { visibility: hidden; } /* the satellite's dot over th
 #tracked-parent:empty { display: none; }
 #tracked-parent button { padding: 0; color: #fff; font-weight: 600; } /* a link: as the satellite's name */
 #tracked-parent span, #tracked-count { color: #777; }
+#tl-cover { color: #b8b8b8 !important; font-variant-numeric: tabular-nums; }
+#tl-cover:hover { color: #fff !important; }
+#tl-cover[hidden] { display: none; }
 #constellation-key { position: absolute; top: 40px; left: 20px; display: flex; flex-direction: column; gap: 6px; white-space: nowrap; }
 #constellation-key[hidden] { display: none; }
 #constellation-key > span { display: flex; gap: 14px; color: #b8b8b8; font-variant-numeric: tabular-nums; }
