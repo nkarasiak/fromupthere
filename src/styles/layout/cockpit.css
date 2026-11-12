@@ -50,9 +50,6 @@ body.opening #deck-canvas { visibility: hidden; } /* the satellite's dot over th
 #tracked-parent:empty { display: none; }
 #tracked-parent button { padding: 0; color: #fff; font-weight: 600; } /* a link: as the satellite's name */
 #tracked-parent span, #tracked-count { color: #777; }
-#tl-cover { color: #b8b8b8 !important; font-variant-numeric: tabular-nums; }
-#tl-cover:hover { color: #fff !important; }
-#tl-cover[hidden] { display: none; }
 #constellation-key { position: absolute; top: 40px; left: 20px; display: flex; flex-direction: column; gap: 6px; white-space: nowrap; }
 #constellation-key[hidden] { display: none; }
 #constellation-key > span { display: flex; gap: 14px; color: #b8b8b8; font-variant-numeric: tabular-nums; }
@@ -66,6 +63,25 @@ body.tracking-mode .sat-figures { display: flex; }
 #tl-play, #tl-reset { display: flex; align-items: center; color: #9a9a9a !important; padding: 6px 7px !important; }
 #tl-play:hover, #tl-reset:hover { color: #fff !important; }
 #tl-speed { min-width: 3em; color: #fff; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* How far back the swaths go: plain grey words, the active one white, underlined in the constellation's colour */
+/* Coverage: the window as plain text like the rest of the bar, the share of the Earth imaged on hover, a menu of windows */
+#tl-window { display: flex; align-items: center; position: relative; }
+#tl-window[hidden] { display: none; }
+#cockpit-panel #tl-cover { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; } /* as the date and time */
+/* On hover, what the globe shows (not while the menu is open) */
+#tl-cover-tip { display: none; position: absolute; right: 6px; top: calc(100% + 4px); white-space: nowrap; color: #b8b8b8; } /* plain text, as the bar */
+#tl-cover:hover:not([aria-expanded="true"]) ~ #tl-cover-tip { display: block; }
+#tl-cover-tip b { color: #fff; font-weight: 600; }
+#tl-cover-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 220px; display: flex; flex-direction: column;
+  padding: 6px; background: rgba(8, 14, 24, 0.92); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px;
+  text-shadow: none; white-space: normal; }
+#tl-cover-menu[hidden] { display: none; }
+#tl-cover-menu > span { padding: 6px 10px 8px; color: #8a8a8a; font-size: 12px; }
+#cockpit-panel #tl-cover-menu button { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 6px;
+  color: #b8b8b8; text-align: left; font-variant-numeric: tabular-nums; }
+#cockpit-panel #tl-cover-menu button:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+#cockpit-panel #tl-cover-menu button[aria-checked="true"] { color: #fff; font-weight: 600; background: color-mix(in srgb, var(--swath, #00d4ff) 15%, transparent); }
+#tl-cover-menu button span { color: var(--swath, #00d4ff); }
 .top-sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.25); margin: 0 6px; }
 
 /* Phones: no date, just the time */

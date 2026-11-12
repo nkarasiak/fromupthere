@@ -98,7 +98,6 @@
           <span class="tracking-name" id="tracked-name">No satellite selected</span>
         </div>
         <span id="tracked-count"></span>
-        <button id="tl-cover" hidden></button>
         <span class="sat-figures">
           <span><span id="tracked-altitude">---</span> <span class="banner-unit">km</span></span>
           <span><span id="tracked-speed">---</span> <span class="banner-unit">km/s</span></span>
@@ -115,6 +114,16 @@
         <button id="tl-play"></button>
         <button id="tl-speed"></button>
         <button id="tl-reset"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.5"/><path d="M3 2.5V5h2.5"/></svg></button>
+        <!-- An imaging constellation: how far back its swaths go (deck-satellite-tracker.ts fills it) -->
+        <span id="tl-window" hidden>
+          <span class="top-sep"></span>
+          <button id="tl-cover" aria-haspopup="menu" aria-expanded="false">
+            <span id="tl-cover-span"></span>
+            <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>
+          </button>
+          <span id="tl-cover-tip" role="tooltip"></span>
+          <span id="tl-cover-menu" role="menu" hidden><span>Share of the Earth the swaths of the last … have imaged</span></span>
+        </span>
       </div>
 
       <!-- Search Dropdown (Replaced with Command Palette) -->

@@ -347,6 +347,12 @@ class SatelliteTracker3D {
         this.satelliteTracker.stopFollowing();
       }
       
+      // [ / ]: an imaging constellation's swaths over a shorter / longer past window
+      if ((e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        this.satelliteTracker.stepCoverWindow(e.key === ']' ? 1 : -1);
+      }
+
       // B key to reset bearing to automatic mode
       if (e.key === 'b' || e.key === 'B') {
         if (!e.ctrlKey && !e.metaKey) {

@@ -18,6 +18,7 @@ const SHORTCUTS = [
   ['G', 'Globe / flat map'],
   ['← →', 'Previous / next satellite of its constellation'],
   ['B', 'Camera bearing back to automatic'],
+  ['[ ]', 'Constellation swaths: shorter / longer past window'],
   ['Ctrl + drag', 'Tilt the camera']
 ];
 
