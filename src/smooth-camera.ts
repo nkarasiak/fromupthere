@@ -50,6 +50,7 @@ export class SmoothCamera {
   };
   private followed: [number, number] = [0, 0]; // smoothed satellite position
   heading = 0; // smoothed camera bearing at the satellite (the map's bearing is the one at the ground point)
+  headingOffset = 0; // automatic bearing: this many deg right of its heading (the satellite's defaultBearing)
   // Point of view, the angle at the satellite between straight down and the line of sight to it: 0 from straight above,
   // 90 level with it, more from below (the URL's pitch)
   pov = 62;
@@ -58,6 +59,9 @@ export class SmoothCamera {
   // User bearing control
   private userControlledBearing = false;
   private userBearing = 0;
+  // The track's heading when that bearing was set: a manual bearing turns with the track, so it stays the same angle to
+  // the satellite. A fixed compass bearing swung the camera right round it near a pole, where the heading reverses.
+  private userTrack: number | null = null;
   // A selected satellite on show, like a game's chase camera: once the fly-in ends the view drifts on its own, slow
   // out-of-step swings of bearing, pitch and distance (SHOW) about where tracking began. Never all the way round: its
   // picture is flat, from behind it would face the wrong way. Any click, wheel or key stops it where it is.
@@ -82,7 +86,8 @@ export class SmoothCamera {
     this.targetPosition = initialPosition;
     this.isSmoothing = true;
     this.followed = [initialPosition.longitude, initialPosition.latitude];
-    this.heading = this.userControlledBearing ? this.userBearing : initialPosition.bearing ?? this.map.getBearing();
+    this.heading = this.userControlledBearing ? this.userBearing
+      : initialPosition.bearing !== undefined ? initialPosition.bearing + this.headingOffset : this.map.getBearing(); // as the fly-in ended
     this.lastZoom = this.map.getZoom();
     this.lastGood = { pov: this.pov, zoom: this.zoom };
     this.zoomTarget = this.zoom;
@@ -165,15 +170,19 @@ export class SmoothCamera {
     // Calculate target bearing - use user bearing if controlled, otherwise satellite direction
     let targetBearing = this.heading;
     if (this.userControlledBearing) {
-      targetBearing = this.userBearing;
+      const track = this.targetPosition.bearing;
+      if (track !== undefined && this.userTrack === null) this.userTrack = track; // set before tracking began (a link's bearing)
+      targetBearing = this.userBearing + (track !== undefined ? track - this.userTrack! : 0);
     } else if (this.targetPosition.bearing !== undefined) {
-      targetBearing = this.targetPosition.bearing + (this.show ? swing(SHOW.bearing) : 0);
+      targetBearing = this.targetPosition.bearing + this.headingOffset + (this.show ? swing(SHOW.bearing) : 0);
     }
 
-    // Smooth bearing interpolation to avoid sudden jumps
-    const newBearing = this.heading = this.interpolateBearing(this.heading, targetBearing, 1 - (1 - base * 0.5) ** this.speed);
+    // Smooth bearing interpolation to avoid sudden jumps; a manual bearing applies at once (the hand is smooth already,
+    // and turn() adds to `heading`: smoothed, it lagged and most of a drag was lost)
+    const newBearing = this.heading = this.userControlledBearing ? targetBearing
+      : this.interpolateBearing(this.heading, targetBearing, 1 - (1 - base * 0.5) ** this.speed);
 
-    const frame = (pov = this.pov) => framing(this.followed, this.targetPosition!.altitude, newBearing, pov, this.zoom, this.map.transform.height);
+    const frame = (pov = this.pov, maxPitch = MAX_PITCH) => framing(this.followed, this.targetPosition!.altitude, newBearing, pov, this.zoom, this.map.transform.height, maxPitch);
     let view = frame();
     if (!(view.off <= MAX_OFF_AXIS)) { // satellite off the top of the screen, or camera underground: refuse that move
       ({ pov: this.pov, zoom: this.zoom } = this.lastGood);
@@ -184,9 +193,15 @@ export class SmoothCamera {
     // MapLibre's globe won't centre beyond 85 deg: it clamps the ground point the camera orbits, which moves the camera
     // elsewhere, turned round. Near a pole, look more steeply down (that point nearer the satellite) until it's within
     // reach; the chosen pov comes back past the pole. ponytail: an orbit whose nadir passes 85 deg still clamps
-    for (let pov = this.pov; Math.abs(view.camera.center[1]) > MAX_CENTER_LAT && pov > 0;) {
-      pov = Math.max(0, pov - 2);
-      view = frame(pov);
+    // Same camera, aimed lower (a nearer ground point, the satellite higher on screen) until that point is within reach:
+    // the largest such tilt, by bisection. Lowering the pov instead moved the camera, and it jumped as the clamp came and went
+    if (Math.abs(view.camera.center[1]) > MAX_CENTER_LAT) {
+      let lo = 0, hi = view.camera.pitch;
+      view = frame(this.pov, lo);
+      for (let i = 0; i < 16; i++) {
+        const mid = (lo + hi) / 2, v = frame(this.pov, mid);
+        if (Math.abs(v.camera.center[1]) > MAX_CENTER_LAT) hi = mid; else { lo = mid; view = v; }
+      }
     }
     this.map.jumpTo(view.camera);
     this.lastZoom = this.map.getZoom();
@@ -312,15 +327,13 @@ export class SmoothCamera {
   // User bearing control methods
   setUserControlledBearing(controlled: boolean, bearing?: number): void {
     this.userControlledBearing = controlled;
-    if (controlled && bearing !== undefined) {
-      this.userBearing = bearing;
-    }
+    if (controlled && bearing !== undefined) this.updateUserBearing(bearing);
   }
 
   updateUserBearing(bearing: number): void {
-    if (this.userControlledBearing) {
-      this.userBearing = bearing;
-    }
+    if (!this.userControlledBearing) return;
+    this.userBearing = bearing;
+    this.userTrack = this.targetPosition?.bearing ?? null;
   }
 
   onShow(): boolean {
@@ -340,11 +353,14 @@ export class SmoothCamera {
 }
 
 // The show's swings: [amplitude, period in s], periods out of step so the motion doesn't visibly repeat
-const SHOW = { bearing: [15, 50], pov: [7, 37], zoom: [0.3, 29] }; // deg, deg (up and down), zoom (closer and farther)
+// A little move only, never turning round the satellite
+const SHOW = { bearing: [4, 50], pov: [3, 37], zoom: [0.15, 29] }; // deg, deg (up and down), zoom (closer and farther)
 const MAX_CENTER_LAT = 85; // MapLibre's globe clamps its centre at 85.05 deg
 const MAX_EYE_ZOOM = 14; // ~7 km from the satellite
 
 const MAX_PITCH = 85; // MapLibre's camera tilt, at the ground point it orbits
+const SHIFT_FROM_ZOOM = 5.5, SHIFT_FULL_ZOOM = 2.5; // zooming out from this, the picture slides up to centre the globe by this
+const SHIFT_MAX_UP = 0.4; // ...the satellite at most this far (screen heights) above the middle
 const MAX_OFF_AXIS = Math.atan(0.46); // satellite above the view's axis: the top padding below then stays under 80% of the screen
 
 // MapLibre's camera for a point of view on a satellite: `pov` (see SmoothCamera.pov) and `zoom` place the camera (zoom:
@@ -355,7 +371,7 @@ const MAX_OFF_AXIS = Math.atan(0.46); // satellite above the view's axis: the to
 // below), the camera looks down to the ground at MAX_PITCH and the satellite shows above the axis (by `off`), kept on
 // screen by a top padding that moves the axis down. All in the vertical plane through the satellite along the bearing:
 // x ahead, y up at the satellite, km from the Earth's centre.
-export function framing(sat: [number, number], altKm: number, bearing: number, pov: number, zoom: number, height: number) {
+export function framing(sat: [number, number], altKm: number, bearing: number, pov: number, zoom: number, height: number, maxPitch = MAX_PITCH) {
   const R = 6371, rad = Math.PI / 180, psi = pov * rad;
   const d = 1.5 * height * 2 * Math.PI * R / (512 * 2 ** zoom);
   const L = [Math.sin(psi), -Math.cos(psi)]; // line of sight camera -> satellite
@@ -364,18 +380,27 @@ export function framing(sat: [number, number], altKm: number, bearing: number, p
     const b = P[0] * A[0] + P[1] * A[1], disc = b * b - rP * rP + R * R;
     return disc < 0 ? -1 : -b - Math.sqrt(disc);
   };
-  const tilt = (A: number[], t: number) => Math.acos(-(A[0] * (P[0] + t * A[0]) + A[1] * (P[1] + t * A[1])) / R); // at the ground point
-  let A = L, t = hit(L);
-  const hidden = t > 0 && t < d; // the Earth is between the camera and the satellite
-  if (t <= 0 || hidden || tilt(L, t) > MAX_PITCH * rad) {
+  // at the ground point; clamped: looking straight down, rounding gave acos(1.0000001) = NaN and the camera froze
+  const tilt = (A: number[], t: number) => Math.acos(Math.min(1, Math.max(-1, -(A[0] * (P[0] + t * A[0]) + A[1] * (P[1] + t * A[1])) / R)));
+  const tL = hit(L), hidden = tL > 0 && tL < d; // the Earth is between the camera and the satellite
+  let A = L, t = tL;
+  if (t <= 0 || hidden || tilt(L, t) > maxPitch * rad) {
     // From the nadir toward the line of sight by a: the ground point seen at MAX_PITCH (law of sines in the triangle
     // Earth centre, camera, ground point)
-    const a = Math.asin(R * Math.sin(MAX_PITCH * rad) / rP), n = [-P[0] / rP, -P[1] / rP], ln = L[0] * n[0] + L[1] * n[1];
+    const a = Math.asin(R * Math.sin(maxPitch * rad) / rP), n = [-P[0] / rP, -P[1] / rP], ln = L[0] * n[0] + L[1] * n[1];
     const f = [L[0] - ln * n[0], L[1] - ln * n[1]], fl = Math.hypot(f[0], f[1]);
     A = [Math.cos(a) * n[0] + Math.sin(a) * f[0] / fl, Math.cos(a) * n[1] + Math.sin(a) * f[1] / fl];
     t = hit(A);
   }
   const off = rP < R + 1 || hidden ? NaN : Math.acos(Math.min(1, L[0] * A[0] + L[1] * A[1])); // NaN: no view of it
+  // The picture's vertical shift (px, + up), by padding (it moves the axis, the camera doesn't turn): a satellite far
+  // above the axis comes down to 0.3 of the height; zoomed out, the picture slides up so the globe nears the middle
+  // instead of sinking under the satellite, the satellite no higher than SHIFT_MAX_UP. Turning the aim to the Earth's
+  // centre instead swept the whole scene round while zooming.
+  const f = 1.5 * height, up = f * Math.tan(off); // the satellite above the axis
+  const C = [-P[0] / rP, -P[1] / rP], below = f * Math.tan(Math.acos(Math.min(1, A[0] * C[0] + A[1] * C[1]))); // the Earth's centre below it
+  const w = Math.max(0, Math.min(1, (SHIFT_FROM_ZOOM - zoom) / (SHIFT_FROM_ZOOM - SHIFT_FULL_ZOOM)));
+  const shift = w * Math.min(below, Math.max(0, SHIFT_MAX_UP * height - up)) - Math.max(0, up - 0.3 * height); // evenly over the zooms
   // Ground point: `ang` ahead of the satellite on the great circle along the bearing; the map's bearing is the course there
   const ang = Math.atan2(P[0] + t * A[0], P[1] + t * A[1]), b = bearing * rad, la = sat[1] * rad;
   const lat = Math.asin(Math.sin(la) * Math.cos(ang) + Math.cos(la) * Math.sin(ang) * Math.cos(b));
@@ -387,7 +412,7 @@ export function framing(sat: [number, number], altKm: number, bearing: number, p
       zoom: Math.log2(1.5 * height * 2 * Math.PI * R * Math.cos(lat) / (512 * t)),
       bearing: course / rad,
       pitch: tilt(A, t) / rad,
-      padding: { top: Math.max(0, 2 * (1.5 * height * Math.tan(off) - 0.3 * height)), bottom: 0, left: 0, right: 0 }
+      padding: { top: Math.min(0.9 * height, Math.max(0, -2 * shift)), bottom: Math.min(0.9 * height, Math.max(0, 2 * shift)), left: 0, right: 0 }
     },
     off
   };

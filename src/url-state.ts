@@ -88,7 +88,7 @@ export class URLState {
       return 4.7; // Default zoom for satellite tracking
     }
     
-    return 0; // Homepage: a small Earth far away, then the fly-in closes on EDC-07
+    return 0; // Homepage: a small Earth far away, then the opening closes on EDC-07 (main.ts)
   }
 
   getInitialPitch(): number {

@@ -4,7 +4,8 @@ import { DeckSatelliteTracker } from './deck-satellite-tracker';
 import { URLState } from './url-state';
 import { CommandPalette } from './command-palette';
 import { installNightShading } from './night-layer';
-import { ESRI_TILES } from './tile-prefetch';
+import { ESRI_TILES, prefetchAround, prefetched } from './tile-prefetch';
+import { openingCamera, OPENING } from './opening';
 import { installSettings, settings } from './settings';
 import { CONSTELLATIONS, Constellation, constellationOf } from './config/satellites';
 import { SearchComponent } from './components/search.component';
@@ -20,7 +21,9 @@ class SatelliteTracker3D {
   private isGlobeMode = true; // Start with globe projection
   private urlState = new URLState();
   private commandPalette!: CommandPalette;
-  private nightShading?: { setTime(ms: number | null): void };
+  private nightShading?: ReturnType<typeof installNightShading>;
+  private opening = false; // a satellite to land on: the opening first (opening.ts)
+  private openingUnderway = false; // its orbit came, the opening runs (it ends the opening itself)
   private searchComponent!: SearchComponent;
   private _cockpitComponent!: CockpitComponent;
   private initialZoom!: number;
@@ -61,8 +64,10 @@ class SatelliteTracker3D {
     // Always start at global view for smooth flyTo animation to satellites
     // If specific coordinates are provided AND no satellite is specified, use them
     const initialCenter: [number, number] = (!initialSatellite && initialCoordinates) ? initialCoordinates : [0, 0];
-    
-    
+    this.opening = !this.urlState.getInitialGroup() && !(!initialSatellite && initialCoordinates);
+    if (!this.opening) document.body.classList.remove('opening');
+    else setTimeout(() => { if (!this.openingUnderway) this.endOpening(); }, 20000); // its orbit never came...: the Earth
+
     this.map = new MapLibreMap({
       container: 'map',
       style: {
@@ -73,7 +78,8 @@ class SatelliteTracker3D {
         sky: { 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.45, 6, 0.3, 9, 0] }
       },
       center: initialCenter,
-      zoom: initialSatellite ? 4 : this.initialZoom, // Start at safe zoom level to avoid terrain tile errors
+      // the opening: the bare globe whole, until the satellite's orbit comes and the camera goes over to it
+      zoom: this.opening ? 1 : initialSatellite ? 4 : this.initialZoom, // Start at safe zoom level to avoid terrain tile errors
       pitch: initialPitch, // Use pitch from URL
       bearing: initialBearing, // Use bearing from URL
       attributionControl: false, // Disable default attribution control to avoid duplicates
@@ -108,6 +114,10 @@ class SatelliteTracker3D {
       this.addDayBasemap();
       this.nightShading = installNightShading(this.map, this.getFirstSatelliteLayerId());
       this.satelliteTracker.setNightTimeSetter(t => this.nightShading?.setTime(t));
+      if (this.opening) { // hidden, still loading: the opening shows the bare globe and its atmosphere
+        for (const id of ['esri-world-imagery-lowres', 'esri-world-imagery']) this.map.setPaintProperty(id, 'raster-opacity', 0);
+        this.nightShading.setShown(0);
+      }
       this.add3DTerrain();
       
       // Apply working pitch override from test page
@@ -269,7 +279,6 @@ class SatelliteTracker3D {
     } else {
       smoothCamera.updateUserBearing(newBearing);
     }
-    this.map.setBearing(newBearing);
   }
 
   private resetBearingToAutomatic() {
@@ -399,6 +408,10 @@ class SatelliteTracker3D {
           
           // Satellites will be loaded on-demand when searching
           
+          if (this.opening) {
+            this.open(satelliteToTrack);
+            return;
+          }
           // Start satellite tracking immediately
           setTimeout(() => {
             const satellite = this.satelliteTracker.getSatellites().get(satelliteToTrack);
@@ -439,6 +452,10 @@ class SatelliteTracker3D {
             
             // Satellites will be loaded on-demand when searching
             
+            if (this.opening) {
+              this.open(satelliteToTrack);
+              return;
+            }
             // Track the satellite immediately
             setTimeout(() => {
               const satellite = this.satelliteTracker.getSatellites().get(satelliteToTrack);
@@ -457,6 +474,7 @@ class SatelliteTracker3D {
             }, 3500);
           } else {
             // Fallback: if specific satellite not found, load ISS and all satellites
+            this.endOpening(); // nothing to open on: the Earth now, not a black screen
             const issLoaded = this.satelliteTracker.loadConfigSatelliteById('iss-zarya');
             if (issLoaded) {
               this.satelliteTracker.updateLayers();
@@ -559,6 +577,67 @@ class SatelliteTracker3D {
 
   // Around the name in the dock: a tracked satellite's constellation before it, as a breadcrumb (a click opens the
   // constellation), or a constellation's size after it
+  // The opening (opening.ts): the bare globe, held until the landing view is loaded out of sight (or OPENING.MAX_MS), then
+  // the imagery fades in and the camera dives to the satellite; the top bar comes once it has arrived
+  // The night lights first, the day imagery half a beat behind: together, the day showed through the half-faded night side
+  private reveal(ms: number) {
+    for (const layer of ['esri-world-imagery-lowres', 'esri-world-imagery']) {
+      this.map.setPaintProperty(layer, 'raster-opacity-transition', { duration: ms, delay: ms / 2 });
+      this.map.setPaintProperty(layer, 'raster-opacity', 1);
+    }
+    this.nightShading?.setShown(1, ms);
+  }
+
+  // The opening gave up (no satellite, an error, too long): just the Earth, as it is, never a black screen
+  private endOpening() {
+    if (!document.body.classList.contains('opening')) return;
+    if (this.map.getLayer('esri-world-imagery')) this.reveal(0);
+    document.body.classList.remove('opening');
+    this.urlState.setInitializing(false);
+    this.isInitializing = false;
+  }
+
+  private async open(id: string) {
+    try {
+      await this.openOn(id);
+    } catch (error) {
+      console.error('Opening failed:', error);
+      this.endOpening();
+    }
+  }
+
+  private async openOn(id: string) {
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms)), url = (key: string) => this.urlState.getNumber(key);
+    for (let i = 0; i < 40 && !this.satelliteTracker.getSatellites().get(id)?.position; i++) await sleep(50); // its first position
+    const sat = this.satelliteTracker.getSatellites().get(id);
+    const reveal = (ms: number) => this.reveal(ms);
+    if (!sat?.position) { // nothing to land on: just the Earth
+      this.endOpening();
+      return console.warn(`Satellite "${id}" not found or has no position`);
+    }
+    this.openingUnderway = true;
+    const zoom = url('zoom') ?? sat.defaultZoom ?? 4.7, pitch = url('pitch') ?? sat.defaultPitch ?? 62;
+    // Its position is known only now (its orbit is fetched, up to ~20 s when CelesTrak throttles): over to it from the
+    // whole globe, then creeping closer while the landing view loads
+    const { under, camera } = this.satelliteTracker.landingCamera(id, zoom, pitch, url('bearing'), Date.now() + OPENING.MIN_MS + OPENING.DIVE_MS);
+    const centre = camera.center;
+    prefetchAround([under, centre, [2 * centre[0] - under[0], 2 * centre[1] - under[1]]]); // and on toward the horizon
+    this.map.easeTo({ ...openingCamera(camera), duration: OPENING.APPROACH_MS });
+    await sleep(OPENING.APPROACH_MS);
+    this.map.easeTo({ ...openingCamera(camera, true), duration: OPENING.MAX_MS, easing: t => t });
+    await Promise.race([sleep(OPENING.MAX_MS), (async () => {
+      await Promise.all([sleep(OPENING.MIN_MS), prefetched()]);
+      while (!this.map.areTilesLoaded() || !this.satelliteTracker.iconReady(id)) await sleep(100);
+    })()]);
+    reveal(OPENING.REVEAL_MS);
+    await sleep(OPENING.REVEAL_MS * 0.6);
+    this.satelliteTracker.followSatelliteWithAnimation(id, zoom, pitch, url('bearing'), url('speed'), OPENING.DIVE_MS, true);
+    await sleep(OPENING.DIVE_MS + 300);
+    document.body.classList.remove('opening');
+    this.urlState.setInitializing(false);
+    this.isInitializing = false;
+  }
+
   private updateConstellationSlot() {
     const parent = document.getElementById('tracked-parent')!, count = document.getElementById('tracked-count')!;
     parent.textContent = count.textContent = '';

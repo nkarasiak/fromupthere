@@ -34,7 +34,7 @@ export interface SatelliteData {
     height: number; // meters
   };
   image?: string; // Optional image URL for satellites with custom icons
-  defaultBearing?: number; // Optional default camera bearing when tracking this satellite (0-360 degrees)
+  defaultBearing?: number; // camera bearing when tracking it, relative to its heading (deg, + to the right; 0: straight behind)
   defaultZoom?: number; // Optional default zoom level when tracking this satellite
   defaultPitch?: number; // Optional default pitch angle when tracking this satellite
   scaleFactor?: number; // Optional scale factor for satellite size (default: 2.0)
@@ -60,6 +60,9 @@ export interface OrbitCircleData {
 }
 
 const FLY_DURATION_MS = 3000;
+// The tracking view's names on a dark chip, as the constellation view's: plain white vanished over a desert or ice
+// (an SDF outline instead looked blurred)
+const LABEL_CHIP = { background: true, getBackgroundColor: [8, 14, 24, 150] as [number, number, number, number], backgroundPadding: [8, 3] as [number, number], backgroundBorderRadius: 8 };
 const SIBLING_MARKS_MAX = 16; // a tracked imager's mates drawn with swath, cone and picture up to this many (else dots)
 const SIBLING_SWATH = 0.4; // a mate's swath, relative to the tracked one's
 const SIBLING_MIN_SCALE = 0.6; // a mate's picture: in perspective with the tracked one, at most its size, never below this of it
@@ -509,8 +512,10 @@ export class DeckSatelliteTracker {
     console.log(`🌐 Constellation "${group.id}": ${ids.length} satellites`);
     if (ids.length === 0) return false; // the caller says so, or tries another
 
-    // From a satellite in time-lapse, carry on with its clock (time and speed); from live tracking, start now at the default speed
+    // From a satellite in time-lapse, carry on with its clock (time and speed); from live tracking, start now at its speed
+    // (x1: the settings' speed only for a constellation opened directly, ?group=)
     const fromTrack = this.followingSatellite && !this.trackLive ? { t: this.simNow(), speed: this.trackSpeed, paused: this.trackPaused } : null;
+    const fromSpeed = this.followingSatellite ? this.trackSpeed : null;
     this.stopSimpleTracking();
     this.smoothTracker.stopTracking();
     this.smoothCamera.stopSmoothTracking();
@@ -527,7 +532,8 @@ export class DeckSatelliteTracker {
     this.ensureGlobeOverlay();
 
     // Look at the orbit plane edge-on, over its daylit pass: the ground track is a vertical line through the middle of
-    // the screen. The plane is the one most members share; others (e.g. EDC-01) cross it.
+    // the screen. The plane is the one most members share; with other planes (e.g. EDC-01's), the centre is midway
+    // between their daylit equator crossings.
     const sats = ids.map(id => this.satellites.get(id)!);
     const rad = Math.PI / 180;
     const nowDate = new Date(fromTrack?.t ?? Date.now());
@@ -569,8 +575,12 @@ export class DeckSatelliteTracker {
         }
       } else {
         // View direction: the orbit's equator crossing on the sun's side, the daylit pass where these imaging satellites work,
-        // with the equator at the centre of the globe
-        let u = sunSide(node);
+        // with the equator at the centre of the globe; several planes: the middle of their crossings
+        const planes: number[][] = [];
+        for (const q of normals) if (!planes.some(p => dot(p, q) > Math.cos(15 * rad))) planes.push(q);
+        const crossings = planes.map(p => sunSide([-p[1], p[0], 0])).filter(c => Math.hypot(...c) > 0.05).map(c => c.map(x => x / Math.hypot(...c)));
+        const mid = crossings.reduce((a, c) => [a[0] + c[0], a[1] + c[1], a[2] + c[2]], [0, 0, 0]);
+        let u = planes.length > 1 && Math.hypot(...mid) > 0.1 ? mid : sunSide(node);
         if (Math.hypot(...u) < 0.05) { // equatorial orbit: no single crossing, use the sun projected into the orbit plane
           u = sv.map((c, i) => c - dot(sv, n) * n[i]);
           if (Math.hypot(...u) < 1e-3) u = [1, 0, 0]; // sun along the axis
@@ -608,7 +618,7 @@ export class DeckSatelliteTracker {
     // Time-lapse: starts playing right after the fly-in
     this.tlGmst = gmst;
     this.tlPlaying = !fromTrack?.paused;
-    this.tlSpeed = fromTrack?.speed ?? settings.speed;
+    this.tlSpeed = fromTrack?.speed ?? fromSpeed ?? settings.speed;
     this.anchorTimelapse(nowDate.getTime());
     document.getElementById('utc-label')!.textContent = 'Sim UTC';
     this.syncTimeControls();
@@ -2062,13 +2072,13 @@ export class DeckSatelliteTracker {
             return { ...m, px: k?.px ?? 1, lift: shown / 2 };
           }),
           getPosition: (d: any) => d.position, getText: (d: any) => d.name, getSize: (d: any) => 11 * d.px, getColor: [255, 255, 255, 170],
-          getPixelOffset: (d: any) => [0, -(d.lift + 10) * d.px], fontFamily: 'Inter, sans-serif', fontWeight: 600
+          getPixelOffset: (d: any) => [0, -(d.lift + 10) * d.px], fontFamily: 'Inter, sans-serif', fontWeight: 600, ...LABEL_CHIP
         })
       ] : []),
       new TextLayer({ // its own name, above its picture or dot
         id: 'tracked-name', data: [{ position: sat }], parameters: onTop, updateTriggers: { getPosition: f, getSize: f, getPixelOffset: f },
         getPosition: (d: any) => d.position, getText: () => s.shortname || s.name, getSize: 13 * px, getColor: [255, 255, 255, 255],
-        getPixelOffset: [0, -((icon ? size / 2 : 16) + 10) * px], fontFamily: 'Inter, sans-serif', fontWeight: 600
+        getPixelOffset: [0, -((icon ? size / 2 : 16) + 10) * px], fontFamily: 'Inter, sans-serif', fontWeight: 600, ...LABEL_CHIP
       }),
       ...(icon ? [
         new IconLayer({
@@ -2280,56 +2290,11 @@ export class DeckSatelliteTracker {
 
 
   // keepClock: from another satellite (its constellation's next), same time and speed
+  // Track a satellite chosen on screen (a click, search, a mate): fly to its own view, as the landing does (that waits for
+  // the flight to end; a fixed timer here started tracking mid-flight when tearing down a constellation held the flight up)
   followSatellite(satelliteId: string, keepClock = false) {
-    this.startTrackClock(satelliteId, keepClock);
-    this.followingSatellite = satelliteId;
-    // Reset tracked satellite size when following a new satellite
-    this.trackedSatelliteSizeMultiplier = 1.0;
-    // Always show only tracked satellite when tracking starts
-    this.showTrackedSatelliteOnly = true;
-    const satellite = this.satellites.get(satelliteId);
-    
-    // Load satellite image immediately when starting to follow it
-    if (satellite?.image && !this.satelliteIcons.has(satelliteId)) {
-      this.loadSatelliteIcon(satelliteId, satellite.image);
-    }
-    
-    if (satellite) {
-      
-      // Stop all existing tracking to avoid interference
-      this.stopSimpleTracking();
-      this.smoothTracker.stopTracking();
-      this.smoothCamera.stopSmoothTracking();
-      
-      this.smoothCamera.setUserControlledBearing(false); // a new satellite starts in automatic bearing
-      this.smoothCamera.startShow(); // once there, a chase camera's drift (a selected satellite on show)
-      this.smoothCamera.pov = satellite.defaultPitch ?? DEFAULT_PITCH;
-      this.smoothCamera.zoom = satellite.defaultZoom ?? DEFAULT_ZOOM;
-      const end = this.trackingCamera(satellite, this.simNow() + 2000 * this.trackSpeed);
-      this.flightUntil = performance.now() + 2200; // keep deck from cancelling the flyTo with a stale zoom
-      this.map.flyTo({
-        ...end,
-        duration: 2000,
-        essential: true
-      });
-      
-      // Verify zoom after flyTo starts
-      setTimeout(() => {
-      }, 100);
-      
-      // Start smooth tracking once the 2s flyTo has finished (earlier, its jumpTo cancels the flight mid-way)
-      setTimeout(() => {
-        if (this.followingSatellite === satelliteId) this.startUltraSmoothTracking(satellite);
-      }, 2100);
-      
-      this.showMessage(`Tracking ${displayName(satellite)}`, 'success');
-      this.updateLayers(true); // Update layers to show orbit path if enabled
-      
-      // Notify about tracking change
-      if (this.onTrackingChangeCallback) {
-        this.onTrackingChangeCallback();
-      }
-    }
+    const s = this.satellites.get(satelliteId);
+    if (s) this.followSatelliteWithAnimation(satelliteId, s.defaultZoom ?? DEFAULT_ZOOM, s.defaultPitch ?? DEFAULT_PITCH, null, null, 2000, false, keepClock);
   }
 
   // Tracking view time (ms): real time when live, else the time-lapse clock
@@ -2457,12 +2422,28 @@ export class DeckSatelliteTracker {
   private trackingCamera(sat: SatelliteData, t: number, bearing?: number) {
     const p = predictPosition(satellite.twoline2satrec(sat.tle1, sat.tle2), t)!; // as tracking will: no jump at the hand-off
     const c = this.smoothCamera;
-    return framing([p.longitude, p.latitude], p.altitude, bearing ?? p.bearing!, c.pov, c.zoom, this.mapHeight).camera;
+    return framing([p.longitude, p.latitude], p.altitude, bearing ?? p.bearing! + c.headingOffset, c.pov, c.zoom, this.mapHeight).camera;
   }
 
-  // bearing: null = automatic (the ground track's heading); speed: null = the clock's default
-  followSatelliteWithAnimation(satelliteId: string, targetZoom: number, targetPitch: number, bearing: number | null = null, speed: number | null = null) {
-    this.startTrackClock(satelliteId);
+  /** The tracking view of satellite `id` at time t (its map camera), and the ground point under the satellite */
+  landingCamera(id: string, zoom: number, pitch: number, bearing: number | null, t: number) {
+    const sat = this.satellites.get(id)!, p = predictPosition(satellite.twoline2satrec(sat.tle1, sat.tle2), t)!;
+    const under: [number, number] = [p.longitude, p.latitude];
+    return { under, camera: framing(under, p.altitude, bearing ?? p.bearing! + (sat.defaultBearing ?? 0), pitch, zoom, this.mapHeight).camera };
+  }
+
+  /** Its picture is loaded (or it has none) */
+  iconReady(id: string): boolean {
+    const s = this.satellites.get(id);
+    return !s?.image || this.satelliteIcons.has(id);
+  }
+
+  // bearing: null = automatic (the ground track's heading); speed: null = the clock's default; quiet: no toast
+  followSatelliteWithAnimation(satelliteId: string, targetZoom: number, targetPitch: number, bearing: number | null = null, speed: number | null = null,
+    duration = FLY_DURATION_MS, quiet = false, keepClock = false) {
+    this.startTrackClock(satelliteId, keepClock);
+    const pictured = this.satellites.get(satelliteId);
+    if (pictured?.image && !this.satelliteIcons.has(satelliteId)) this.loadSatelliteIcon(satelliteId, pictured.image);
     if (speed) this.setTrackSpeed(speed);
     this.followingSatellite = satelliteId;
     // Reset tracked satellite size when following a new satellite
@@ -2477,20 +2458,21 @@ export class DeckSatelliteTracker {
       this.smoothCamera.stopSmoothTracking();
       
       this.smoothCamera.setUserControlledBearing(bearing !== null, bearing ?? undefined);
+      this.smoothCamera.headingOffset = satellite.defaultBearing ?? 0;
       if (bearing === null) this.smoothCamera.startShow(); // a link's own bearing stays put; else the chase camera's drift
       this.smoothCamera.zoom = targetZoom;
       this.smoothCamera.pov = targetPitch;
-      const end = this.trackingCamera(satellite, this.simNow() + FLY_DURATION_MS * this.trackSpeed, bearing ?? undefined);
+      const end = this.trackingCamera(satellite, this.simNow() + duration * this.trackSpeed, bearing ?? undefined);
       this.map.flyTo({
         ...end,
-        duration: FLY_DURATION_MS,
+        duration,
         essential: true
       });
       
       // Start tracking when the flyTo ends. Ignore a 'moveend' from some earlier camera move that ends
       // mid-flight (it would start tracking and cancel the flyTo); a timer guarantees tracking starts anyway.
       const flyStart = performance.now();
-      this.flightUntil = flyStart + FLY_DURATION_MS + 200;
+      this.flightUntil = flyStart + duration + 200;
       let done = false;
       const finish = () => {
         if (done) return;
@@ -2504,13 +2486,13 @@ export class DeckSatelliteTracker {
         }
       };
       const onFlyMoveEnd = () => {
-        if (performance.now() - flyStart >= FLY_DURATION_MS - 100) finish();
+        if (performance.now() - flyStart >= duration - 100) finish();
       };
       
       this.map.on('moveend', onFlyMoveEnd);
-      setTimeout(finish, FLY_DURATION_MS + 300);
+      setTimeout(finish, duration + 1500); // a flight held up (main thread busy) still ends with its moveend
       
-      this.showMessage(`Tracking ${displayName(satellite)}`, 'success');
+      if (!quiet) this.showMessage(`Tracking ${displayName(satellite)}`, 'success');
       this.updateLayers(true); // Update layers to show orbit path if enabled
     }
   }

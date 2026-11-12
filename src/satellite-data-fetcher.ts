@@ -351,6 +351,8 @@ export class SatelliteDataFetcher {
       dimensions: configOverride?.dimensions || this.getDefaultDimensions(name),
       image: configOverride?.image,
       defaultBearing: configOverride?.defaultBearing,
+      defaultZoom: configOverride?.defaultZoom, // the satellite's own view (EDC-07's: the landing's), from any list
+      defaultPitch: configOverride?.defaultPitch,
       scaleFactor: configOverride?.scaleFactor
     };
     

@@ -32,9 +32,15 @@ export function prefetchAround(points: number[][]) {
   pump();
 }
 
+let idle: Array<() => void> = [];
+
+/** Resolves once everything asked for so far has been fetched (or failed). */
+export const prefetched = () => new Promise<void>(resolve => { idle.push(resolve); pump(); });
+
 function pump() {
   while (running < CONCURRENCY && queue.length) {
     running++;
     queue.shift()!.get().catch(() => { /* on screen it'll be fetched again */ }).finally(() => { running--; pump(); });
   }
+  if (!running && !queue.length) { idle.forEach(f => f()); idle = []; }
 }

@@ -124,8 +124,9 @@ export const SATELLITE_CONFIGS: SatelliteConfig[] = [
     name: 'EDC-07',
     alternateName: 'EarthDaily EDC-07 (YAM-16)',
     image: 'static/images/earthdaily_yam10.webp',
-    defaultZoom: 4.7,
-    defaultPitch: 62,
+    defaultZoom: 5.5, // the landing view (main.ts): behind it, a little to its right, EDC-05 on the left
+    defaultPitch: 60, // EDC-05 (far ahead in the same orbit) just peeks over the horizon
+    defaultBearing: 9,
     scaleFactor: 1.5
   },
   {

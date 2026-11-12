@@ -117,10 +117,11 @@ export function installNightShading(map: MapLibreMap, beforeLayerId?: string) {
   const step = () => (override === null ? NIGHT_REFRESH_MS : 5 * 60 * 1000);
   const timeKey = () => Math.floor((override ?? Date.now()) / step()) * step();
   const tiles = (t: number) => [`nightlights://{z}/{x}/{y}?t=${t}`];
+  let shown = 1; // 0 while the opening hides the imagery (the tiles still load)
   const swap = () => {
     if (pending < 0) return;
     front = 1 - front;
-    map.setPaintProperty(ids[front], 'raster-opacity', 1);
+    map.setPaintProperty(ids[front], 'raster-opacity', shown);
     map.setPaintProperty(ids[1 - front], 'raster-opacity', 0);
     applied = pending;
     pending = -1;
@@ -156,6 +157,13 @@ export function installNightShading(map: MapLibreMap, beforeLayerId?: string) {
     setTime(ms: number | null) {
       override = ms;
       apply();
+    },
+    /** Show (1) or hide (0) the lights, fading over `ms` */
+    setShown(opacity: number, ms = 0) {
+      shown = opacity;
+      map.setPaintProperty(ids[front], 'raster-opacity-transition', { duration: ms, delay: 0 });
+      map.setPaintProperty(ids[front], 'raster-opacity', opacity);
+      setTimeout(() => map.setPaintProperty(ids[front], 'raster-opacity-transition', { duration: 0, delay: 0 }), ms + 50); // swaps stay instant
     }
   };
 }
