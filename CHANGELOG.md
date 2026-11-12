@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **"Show the … constellation"** button at the bottom centre while tracking a constellation's satellite: appears when the pointer moves, hides when it rests.
 - **Satellite pictures on by default** (the setting stays).
 - **Poles**: the camera looks more steeply down while its ground point would pass 85° (MapLibre's globe clamps its centre there, which turned the view round).
+- **Swaths at night for thermal imagers**: MODIS, VIIRS, MetOp (AVHRR) and Fengyun-3 (MERSI) image the night side too, like radar: their swaths no longer stop at the terminator (Aqua on the night side had none).
 - **Swaths**: drawn wherever their rows are in view, even once the satellite is past the horizon; nothing drawn through the Earth's limb.
 - **Imagery**: Esri tiles requested a level sharper (declared 128 px) and one level across the whole view up to 3× the centre distance, so pitched views no longer show patches where levels meet and climbing doesn't blur. Night lights (served no-store by NASA) kept in Cache Storage across visits; tiles along the tracked satellite's next 20 min are fetched ahead.
 - **Mega-constellations**: leaving one (Starlink…) drops its thousands of satellites, which slowed every loop while tracking; it fades out during the fly-in to the tracked satellite.
