@@ -25,7 +25,7 @@ Allow: *.woff2
 Allow: *.ttf
 
 # Sitemap location
-Sitemap: https://www.fromupthe.re/sitemap.xml
+Sitemap: https://nkarasiak.github.io/fromupthere/sitemap.xml
 
 # Crawl-delay for respectful crawling
 Crawl-delay: 1

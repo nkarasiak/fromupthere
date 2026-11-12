@@ -2,38 +2,38 @@
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <!-- Main sitemap with homepage and featured satellites -->
   <sitemap>
-    <loc>https://www.fromupthe.re/sitemap.xml</loc>
+    <loc>https://nkarasiak.github.io/fromupthere/sitemap.xml</loc>
     <lastmod>2025-01-06</lastmod>
   </sitemap>
   
   <!-- Satellite sitemaps (each containing ~2000 satellites) -->
   <sitemap>
-    <loc>https://www.fromupthe.re/sitemap-satellites-1.xml</loc>
+    <loc>https://nkarasiak.github.io/fromupthere/sitemap-satellites-1.xml</loc>
     <lastmod>2025-01-06</lastmod>
   </sitemap>
   
   <sitemap>
-    <loc>https://www.fromupthe.re/sitemap-satellites-2.xml</loc>
+    <loc>https://nkarasiak.github.io/fromupthere/sitemap-satellites-2.xml</loc>
     <lastmod>2025-01-06</lastmod>
   </sitemap>
   
   <sitemap>
-    <loc>https://www.fromupthe.re/sitemap-satellites-3.xml</loc>
+    <loc>https://nkarasiak.github.io/fromupthere/sitemap-satellites-3.xml</loc>
     <lastmod>2025-01-06</lastmod>
   </sitemap>
   
   <sitemap>
-    <loc>https://www.fromupthe.re/sitemap-satellites-4.xml</loc>
+    <loc>https://nkarasiak.github.io/fromupthere/sitemap-satellites-4.xml</loc>
     <lastmod>2025-01-06</lastmod>
   </sitemap>
   
   <sitemap>
-    <loc>https://www.fromupthe.re/sitemap-satellites-5.xml</loc>
+    <loc>https://nkarasiak.github.io/fromupthere/sitemap-satellites-5.xml</loc>
     <lastmod>2025-01-06</lastmod>
   </sitemap>
   
   <sitemap>
-    <loc>https://www.fromupthe.re/sitemap-satellites-6.xml</loc>
+    <loc>https://nkarasiak.github.io/fromupthere/sitemap-satellites-6.xml</loc>
     <lastmod>2025-01-06</lastmod>
   </sitemap>
   

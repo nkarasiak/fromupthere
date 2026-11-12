@@ -3,7 +3,7 @@
  */
 export class SEOManager {
   private static readonly DEFAULT_IMAGE = '/static/images/og-preview.png';
-  private static readonly BASE_URL = 'https://www.fromupthe.re';
+  private static readonly BASE_URL = 'https://nkarasiak.github.io/fromupthere';
 
   /**
    * Update page meta tags when tracking a specific satellite
