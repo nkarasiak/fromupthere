@@ -2137,7 +2137,8 @@ export class DeckSatelliteTracker {
     // isn't a speck
     const shownSize = (m: { px: number }) => base * Math.min(1, Math.max(SIBLING_MIN_SCALE, px / m.px));
     this.constellationLayers = [
-      ...(this.swarm?.layers.map(l => l.clone({ id: `left-${l.id}`, opacity: fade * l.props.opacity, pickable: false })) ?? []), // the camera dives through it
+      // the camera dives through it; its name labels are left out: the tracked satellite draws its own, and two would show at once
+      ...(this.swarm?.layers.filter(l => !String(l.id).startsWith('constellation-labels')).map(l => l.clone({ id: `left-${l.id}`, opacity: fade * l.props.opacity, pickable: false })) ?? []),
       ...(halfKm ? this.swathHistoryLayers(now, [r, g, b]) : []), // under its own 20 min swath
       ...(me.scanArc ? [
         new SolidPolygonLayer({
