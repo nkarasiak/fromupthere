@@ -203,7 +203,9 @@ export class SmoothCamera {
         if (Math.abs(v.camera.center[1]) > MAX_CENTER_LAT) hi = mid; else { lo = mid; view = v; }
       }
     }
-    this.map.jumpTo(view.camera);
+    // Flat (Mercator) map: north up, no rotation. The globe framing still places the camera; only the turn is dropped.
+    const flat = this.map.getProjection().type === 'mercator';
+    this.map.jumpTo(flat ? { ...view.camera, bearing: 0 } : view.camera);
     this.lastZoom = this.map.getZoom();
   }
 

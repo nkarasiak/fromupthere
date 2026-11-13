@@ -233,6 +233,7 @@ class SatelliteTracker3D {
     try {
       if (this.isGlobeMode) {
         this.map.setProjection({ type: 'mercator' });
+        this.map.setBearing(0); // the original flat map: north up
         this.isGlobeMode = false;
         this.showMessage('🗺️ Mercator projection enabled', 'info');
       } else {
@@ -342,11 +343,15 @@ class SatelliteTracker3D {
       }
       
       // Escape: from a constellation's satellite back to the whole constellation (as #show-group), else stop tracking
+      // and ease back to the default view (the homepage's: whole Earth, north up, no tilt)
       if (e.key === 'Escape') {
         e.preventDefault();
         const group = constellationOf(this.satelliteTracker.getFollowingSatellite());
         if (group) this.openConstellation(group, true);
-        else this.satelliteTracker.stopFollowing();
+        else {
+          this.satelliteTracker.stopFollowing();
+          this.map.easeTo({ center: [0, 0], zoom: 0, pitch: 0, bearing: 0, duration: 1500 });
+        }
       }
       
       // [ / ]: an imaging constellation's swaths over a shorter / longer past window
