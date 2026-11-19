@@ -1,7 +1,7 @@
 /* Passes over a place (right click on the map): a frosted panel bottom left, like the toasts */
 #revisits {
   position: fixed; left: 16px; bottom: 40px; z-index: 1500;
-  width: min(340px, calc(100vw - 32px)); max-height: min(60vh, 520px);
+  width: min(380px, calc(100vw - 32px)); max-height: min(60vh, 520px);
   display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
   font: 13px/1.4 Inter, sans-serif; color: #ddd;
   background: rgba(10, 14, 20, 0.8); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px;
@@ -21,9 +21,13 @@
 #revisits .rv-count span, #revisits .rv-note { color: #8a8a8a; font-size: 12px; }
 #revisits .rv-list { overflow-y: auto; min-height: 0; }
 #revisits .rv-list button {
-  display: grid; grid-template-columns: 4.5em 3.5em 1fr auto; gap: 8px; width: 100%; padding: 3px 4px;
+  display: grid; grid-template-columns: 4.5em 3.5em 1fr 3em auto; gap: 8px; width: 100%; padding: 3px 4px;
   text-align: left; border-radius: 4px; font-variant-numeric: tabular-nums;
 }
 #revisits .rv-list button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 #revisits .rv-list button span:last-child { color: #8a8a8a; text-align: right; }
 #revisits .rv-list button.rv-night { color: #666; }
+#revisits .rv-list button span:nth-child(4) { text-align: right; }
+#revisits .rv-list i { font-style: normal; color: #9ab; }
+#revisits .rv-list i.rv-img { color: #fff; font-weight: 600; }
+#revisits .rv-note b { color: #ccc; }
